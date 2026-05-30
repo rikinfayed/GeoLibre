@@ -1,4 +1,4 @@
-import { DEFAULT_BASEMAP } from "@geolibre/core";
+import { BLANK_BASEMAP, DEFAULT_BASEMAP } from "@geolibre/core";
 import type { GeoLibreLayer, MapViewState } from "@geolibre/core";
 import bbox from "@turf/bbox";
 import type { Feature, FeatureCollection, Geometry } from "geojson";
@@ -20,6 +20,14 @@ const DEFAULT_PROJECTION: maplibregl.ProjectionSpecification = {
   type: "globe",
 };
 const DEFAULT_MAX_PITCH = 85;
+const BLANK_BACKGROUND_LAYER_ID = "geolibre-blank-background";
+const BLANK_BACKGROUND_COLOR = "#ffffff";
+const LAYER_CONTROL_EXCLUDED_LAYERS = [
+  BLANK_BACKGROUND_LAYER_ID,
+  highlightFillLayerId(),
+  highlightLineLayerId(),
+  highlightCircleLayerId(),
+];
 const TERRAIN_SOURCE_ID = "geolibre-terrain-dem";
 const TERRAIN_SOURCE: maplibregl.RasterDEMSourceSpecification = {
   type: "raster-dem",
@@ -41,6 +49,29 @@ const EMPTY_HIGHLIGHT: FeatureCollection = {
   features: [],
 };
 
+function createBlankMapStyle(): maplibregl.StyleSpecification {
+  return {
+    version: 8,
+    sources: {},
+    layers: [
+      {
+        id: BLANK_BACKGROUND_LAYER_ID,
+        type: "background",
+        paint: {
+          "background-color": BLANK_BACKGROUND_COLOR,
+        },
+      },
+    ],
+  };
+}
+
+function resolveMapStyle(
+  styleUrl: string | undefined,
+): string | maplibregl.StyleSpecification {
+  if (styleUrl === BLANK_BASEMAP) return createBlankMapStyle();
+  return styleUrl ?? DEFAULT_BASEMAP;
+}
+
 interface NamedLayerState {
   visible: boolean;
   opacity: number;
@@ -50,6 +81,7 @@ interface NamedLayerState {
 interface LayerControlConfig {
   layers?: string[];
   layerStates?: Record<string, NamedLayerState>;
+  excludeLayers?: string[];
 }
 
 interface GeoLibreLayerLabelWindow extends Window {
@@ -130,7 +162,7 @@ export class MapController {
     this.basemapStyleUrl = options.styleUrl ?? DEFAULT_BASEMAP;
     this.map = new maplibregl.Map({
       container,
-      style: this.basemapStyleUrl,
+      style: resolveMapStyle(this.basemapStyleUrl),
       center: view?.center ?? [-100, 40],
       zoom: view?.zoom ?? 2,
       bearing: view?.bearing ?? 0,
@@ -249,7 +281,7 @@ export class MapController {
     if (!this.map) return;
     this.basemapStyleUrl = url;
     this.removeLayerControl();
-    this.map.setStyle(url);
+    this.map.setStyle(resolveMapStyle(url));
   }
 
   applyView(view: MapViewState): void {
@@ -570,9 +602,12 @@ export class MapController {
     const namedStyleLayers = layers.flatMap((layer) =>
       this.getNamedStyleLayers(layer),
     );
-    if (namedStyleLayers.length === 0) return {};
+    if (namedStyleLayers.length === 0) {
+      return { excludeLayers: LAYER_CONTROL_EXCLUDED_LAYERS };
+    }
 
     return {
+      excludeLayers: LAYER_CONTROL_EXCLUDED_LAYERS,
       layers: namedStyleLayers.map(({ id }) => id),
       layerStates: Object.fromEntries(
         namedStyleLayers.map(({ id, name, layer }) => [
