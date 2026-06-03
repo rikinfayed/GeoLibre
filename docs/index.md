@@ -14,7 +14,7 @@ hide:
       path toward cloud-native geospatial workflows.
     </p>
     <div class="hero__actions">
-      <a class="md-button md-button--primary" href="/demo/">Open live demo</a>
+      <a class="md-button md-button--primary" href="https://viewer.geolibre.app/">Open live demo</a>
       <a class="md-button" href="getting-started/">Get started</a>
       <a class="md-button" href="downloads/">Download app</a>
     </div>
@@ -67,19 +67,19 @@ The live demo is the browser-capable version of the GeoLibre desktop UI. It is u
 Open a project by passing a public `.geolibre.json` URL with the `url` query parameter:
 
 ```text
-https://geolibre.app/demo/?url=https://data.geolibre.app/opera-dswx.geolibre.json
+https://viewer.geolibre.app/?url=https://data.geolibre.app/opera-dswx.geolibre.json
 ```
 
 For narrow embeds, add `?layout=compact` to the demo URL to use icon-only toolbar buttons and hide project metadata:
 
 ```text
-https://geolibre.app/demo/?url=https://data.geolibre.app/opera-dswx.geolibre.json&layout=compact
+https://viewer.geolibre.app/?url=https://data.geolibre.app/opera-dswx.geolibre.json&layout=compact
 ```
 
 For map-focused embeds, add `&panels=none` to hide the Layers, Style, and Attribute table panels:
 
 ```text
-https://geolibre.app/demo/?url=https://data.geolibre.app/opera-dswx.geolibre.json&layout=compact&panels=none
+https://viewer.geolibre.app/?url=https://data.geolibre.app/opera-dswx.geolibre.json&layout=compact&panels=none
 ```
 
 Use `toolbar=icons` when you only want icon-only toolbar buttons. `panels=hidden`, `panels=hide`, `panels=off`, and `hidePanels=true` are accepted aliases for hiding panels.
@@ -92,7 +92,7 @@ Use `toolbar=icons` when you only want icon-only toolbar buttons. `panels=hidden
 | `panels` | `panels=none` | Hides the Layers, Style, and Attribute table panels. `hidden`, `hide`, and `off` are aliases. |
 | `hidePanels` | `hidePanels=true` | Alternative way to hide the Layers, Style, and Attribute table panels. |
 
-[Open the live demo](/demo/){ .md-button .md-button--primary }
+[Open the live demo](https://viewer.geolibre.app/){ .md-button .md-button--primary }
 [Read the architecture](architecture.md){ .md-button }
 
 ## Project status
