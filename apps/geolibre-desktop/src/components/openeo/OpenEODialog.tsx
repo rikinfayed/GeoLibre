@@ -261,6 +261,16 @@ export function OpenEODialog({ open, onOpenChange }: OpenEODialogProps) {
       setErrorMessage("Enter an openEO backend URL.");
       return;
     }
+    try {
+      const parsed = new URL(url);
+      if (parsed.protocol !== "https:" && parsed.protocol !== "http:") {
+        setErrorMessage("Backend URL must use https:// or http://.");
+        return;
+      }
+    } catch {
+      setErrorMessage("Enter a valid openEO backend URL.");
+      return;
+    }
     if (authEnabled && (!username.trim() || !password)) {
       setErrorMessage("Enter the basic authentication username and password.");
       return;
@@ -299,8 +309,16 @@ export function OpenEODialog({ open, onOpenChange }: OpenEODialogProps) {
       const nextProcesses = processResponse.processes ?? [];
       setCollections(nextCollections);
       setProcesses(nextProcesses);
-      if (!selectedCollection && nextCollections[0]?.id) {
-        setSelectedCollection(nextCollections[0].id);
+      // Keep the current selection when this backend offers it; otherwise
+      // fall back to the backend's first collection.
+      const firstCollectionId = nextCollections[0]?.id;
+      if (
+        firstCollectionId &&
+        !nextCollections.some(
+          (collection) => collection.id === selectedCollection.trim(),
+        )
+      ) {
+        setSelectedCollection(firstCollectionId);
       }
       setStatusMessage(
         `Connected. Loaded ${nextCollections.length} collections and ${nextProcesses.length} processes.`,
@@ -348,6 +366,7 @@ export function OpenEODialog({ open, onOpenChange }: OpenEODialogProps) {
     setErrorMessage(null);
     setStatusMessage("Creating openEO batch job...");
 
+    let created = false;
     try {
       if (!connection) throw new Error("Connect to an openEO backend first.");
       const process = await buildProcess();
@@ -368,12 +387,17 @@ export function OpenEODialog({ open, onOpenChange }: OpenEODialogProps) {
           ? `Created and started job ${job.id}.`
           : `Created job ${job.id}.`,
       );
-      await refreshJobs(connection);
+      created = true;
     } catch (error) {
       setErrorMessage(formatError(error));
       setStatusMessage(null);
     } finally {
       setBusyAction(null);
+    }
+    if (created) {
+      // Refresh the job list as a best-effort follow-up so a refresh failure
+      // cannot mask the successful job creation.
+      void refreshJobs(connection);
     }
   };
 
@@ -793,6 +817,7 @@ export function OpenEODialog({ open, onOpenChange }: OpenEODialogProps) {
                   <div className="flex min-w-64 flex-1 gap-2">
                     <Input
                       aria-label="Download filename"
+                      title="Suggested file name for the result, saved to the default download location."
                       value={downloadFilename}
                       onChange={(event) =>
                         setDownloadFilename(event.target.value)
