@@ -2,6 +2,9 @@ import {
   type DragEvent as ReactDragEvent,
   type MouseEvent as ReactMouseEvent,
   type RefObject,
+  useCallback,
+  useEffect,
+  useRef,
   useState,
 } from "react";
 import { useAppStore } from "@geolibre/core";
@@ -15,8 +18,16 @@ import {
   DialogHeader,
   DialogTitle,
   DialogDescription,
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+  Input,
+  Label,
   ScrollArea,
   Separator,
+  Select,
   Slider,
 } from "@geolibre/ui";
 import {
@@ -27,12 +38,22 @@ import {
   GripVertical,
   Info,
   Layers,
+  MoreHorizontal,
   MousePointerClick,
   PanelLeftClose,
   PanelLeftOpen,
+  RefreshCw,
+  Timer,
   Trash2,
   ZoomIn,
 } from "lucide-react";
+import {
+  getLayerRefreshConfig,
+  isRefreshableLayer,
+  MIN_REFRESH_INTERVAL_MS,
+  refreshGeoJsonLayer,
+  setLayerRefreshConfig,
+} from "../../lib/layer-refresh";
 
 interface LayerPanelProps {
   mapControllerRef: RefObject<MapController | null>;
@@ -41,11 +62,52 @@ interface LayerPanelProps {
 
 const BACKGROUND_SELECTION_ID = "__geolibre-background__";
 
+const REFRESH_INTERVAL_OPTIONS = [
+  { label: "Off", intervalMs: 0 },
+  { label: "15 seconds", intervalMs: 15_000 },
+  { label: "30 seconds", intervalMs: 30_000 },
+  { label: "1 minute", intervalMs: 60_000 },
+  { label: "5 minutes", intervalMs: 5 * 60_000 },
+  { label: "15 minutes", intervalMs: 15 * 60_000 },
+];
+const CUSTOM_REFRESH_INTERVAL_VALUE = "custom";
+const REFRESH_STATUS_DURATION_MS = 4_000;
+
+type LayerRefreshStatus = {
+  type: "refreshing" | "success" | "error";
+  message: string;
+};
+
+type LayerRefreshTimer = {
+  intervalMs: number;
+  timer: number;
+};
+
 function layerTypeLabel(layer: GeoLibreLayer): string {
   if (layer.type === "geojson" || layer.type === "vector-tiles") {
     return "vector";
   }
   return layer.type;
+}
+
+function refreshIntervalOptionValue(intervalMs: number): string {
+  if (
+    REFRESH_INTERVAL_OPTIONS.some((option) => option.intervalMs === intervalMs)
+  ) {
+    return String(intervalMs);
+  }
+  return CUSTOM_REFRESH_INTERVAL_VALUE;
+}
+
+function customRefreshIntervalSeconds(intervalMs: number): string {
+  if (intervalMs <= 0) return "";
+  return String(Math.round(intervalMs / 1000));
+}
+
+function parseCustomRefreshIntervalMs(value: string): number | null {
+  const seconds = Number(value);
+  if (!Number.isFinite(seconds) || seconds <= 0) return null;
+  return Math.max(MIN_REFRESH_INTERVAL_MS, Math.round(seconds * 1000));
 }
 
 function hasNativeIdentifyLayers(layer: GeoLibreLayer): boolean {
@@ -82,17 +144,40 @@ export function LayerPanel({
   const reorderLayer = useAppStore((s) => s.reorderLayer);
   const moveLayer = useAppStore((s) => s.moveLayer);
   const removeLayer = useAppStore((s) => s.removeLayer);
+  const updateLayer = useAppStore((s) => s.updateLayer);
   const [metadataLayer, setMetadataLayer] = useState<GeoLibreLayer | null>(
     null,
   );
   const [layerPendingRemoval, setLayerPendingRemoval] =
     useState<GeoLibreLayer | null>(null);
+  const [refreshSettingsLayerId, setRefreshSettingsLayerId] = useState<
+    string | null
+  >(null);
+  const [refreshStatuses, setRefreshStatuses] = useState<
+    Record<string, LayerRefreshStatus>
+  >({});
+  const [refreshIntervalChoice, setRefreshIntervalChoice] = useState("0");
+  const [customRefreshSeconds, setCustomRefreshSeconds] = useState("");
   const [isCollapsed, setIsCollapsed] = useState(isMobileViewport);
   const [draggedLayerId, setDraggedLayerId] = useState<string | null>(null);
   const [dropTargetLayerId, setDropTargetLayerId] = useState<string | null>(
     null,
   );
+  const refreshingLayerIdsRef = useRef(new Set<string>());
+  const refreshTimersRef = useRef(new Map<string, LayerRefreshTimer>());
+  const refreshStatusTimersRef = useRef(new Map<string, number>());
   const visibleLayers = [...layers].reverse();
+  const refreshSettingsLayer = refreshSettingsLayerId
+    ? (layers.find((layer) => layer.id === refreshSettingsLayerId) ?? null)
+    : null;
+  const refreshSettingsConfig = refreshSettingsLayer
+    ? getLayerRefreshConfig(refreshSettingsLayer)
+    : null;
+  const refreshSettingsIntervalMs = refreshSettingsConfig
+    ? refreshSettingsConfig.enabled
+      ? refreshSettingsConfig.intervalMs
+      : 0
+    : null;
   const backgroundSelected = selectedLayerId === BACKGROUND_SELECTION_ID;
   const allLayersVisible =
     basemapVisible && layers.every((layer) => layer.visible);
@@ -106,11 +191,216 @@ export function LayerPanel({
   const draggedDisplayIndex = draggedLayerId
     ? visibleLayers.findIndex((layer) => layer.id === draggedLayerId)
     : -1;
+  const customRefreshIntervalMs = parseCustomRefreshIntervalMs(
+    customRefreshSeconds,
+  );
 
   const resetDragState = () => {
     setDraggedLayerId(null);
     setDropTargetLayerId(null);
   };
+
+  const clearRefreshStatusTimer = useCallback((layerId: string) => {
+    const timer = refreshStatusTimersRef.current.get(layerId);
+    if (!timer) return;
+    window.clearTimeout(timer);
+    refreshStatusTimersRef.current.delete(layerId);
+  }, []);
+
+  const scheduleStatusClear = useCallback(
+    (layerId: string) => {
+      clearRefreshStatusTimer(layerId);
+      const timer = window.setTimeout(() => {
+        refreshStatusTimersRef.current.delete(layerId);
+        setRefreshStatuses((current) => {
+          // Keep in-flight statuses; only fade finished success/error notes.
+          if (!current[layerId] || current[layerId].type === "refreshing") {
+            return current;
+          }
+          const next = { ...current };
+          delete next[layerId];
+          return next;
+        });
+      }, REFRESH_STATUS_DURATION_MS);
+      refreshStatusTimersRef.current.set(layerId, timer);
+    },
+    [clearRefreshStatusTimer],
+  );
+
+  const handleRefreshLayer = useCallback(
+    async (layer: GeoLibreLayer, automatic = false) => {
+      if (refreshingLayerIdsRef.current.has(layer.id)) return;
+
+      refreshingLayerIdsRef.current.add(layer.id);
+      clearRefreshStatusTimer(layer.id);
+      setRefreshStatuses((current) => ({
+        ...current,
+        [layer.id]: {
+          type: "refreshing",
+          message: automatic ? "Auto refreshing..." : "Refreshing...",
+        },
+      }));
+
+      try {
+        const { geojson, featureCount } = await refreshGeoJsonLayer(layer);
+        const latest = useAppStore
+          .getState()
+          .layers.find((candidate) => candidate.id === layer.id);
+        if (!latest) return;
+
+        updateLayer(layer.id, {
+          geojson,
+          metadata: {
+            ...latest.metadata,
+            featureCount,
+          },
+        });
+
+        setRefreshStatuses((current) => ({
+          ...current,
+          [layer.id]: {
+            type: "success",
+            message: `Refreshed ${featureCount.toLocaleString()} features.`,
+          },
+        }));
+        scheduleStatusClear(layer.id);
+      } catch (error) {
+        const message =
+          error instanceof Error
+            ? error.message
+            : "Could not refresh this layer.";
+        setRefreshStatuses((current) => ({
+          ...current,
+          [layer.id]: {
+            type: "error",
+            message,
+          },
+        }));
+        scheduleStatusClear(layer.id);
+      } finally {
+        refreshingLayerIdsRef.current.delete(layer.id);
+      }
+    },
+    [clearRefreshStatusTimer, scheduleStatusClear, updateLayer],
+  );
+
+  // Read through a ref inside interval callbacks so long-lived timers never
+  // capture a stale handleRefreshLayer closure.
+  const handleRefreshLayerRef = useRef(handleRefreshLayer);
+  useEffect(() => {
+    handleRefreshLayerRef.current = handleRefreshLayer;
+  }, [handleRefreshLayer]);
+
+  useEffect(() => {
+    if (
+      refreshSettingsLayerId &&
+      !layers.some((layer) => layer.id === refreshSettingsLayerId)
+    ) {
+      setRefreshSettingsLayerId(null);
+    }
+
+    const layerIds = new Set(layers.map((layer) => layer.id));
+    for (const id of refreshStatusTimersRef.current.keys()) {
+      if (!layerIds.has(id)) clearRefreshStatusTimer(id);
+    }
+    setRefreshStatuses((current) => {
+      let changed = false;
+      const next = { ...current };
+      for (const id of Object.keys(next)) {
+        if (!layerIds.has(id)) {
+          delete next[id];
+          changed = true;
+        }
+      }
+      return changed ? next : current;
+    });
+  }, [clearRefreshStatusTimer, layers, refreshSettingsLayerId]);
+
+  useEffect(() => {
+    if (refreshSettingsIntervalMs === null) {
+      setRefreshIntervalChoice("0");
+      setCustomRefreshSeconds("");
+      return;
+    }
+
+    setRefreshIntervalChoice(
+      refreshIntervalOptionValue(refreshSettingsIntervalMs),
+    );
+    setCustomRefreshSeconds(
+      refreshIntervalOptionValue(refreshSettingsIntervalMs) ===
+        CUSTOM_REFRESH_INTERVAL_VALUE
+        ? customRefreshIntervalSeconds(refreshSettingsIntervalMs)
+        : "",
+    );
+  }, [refreshSettingsLayerId, refreshSettingsIntervalMs]);
+
+  useEffect(() => {
+    const activeLayerIds = new Set<string>();
+
+    for (const layer of layers) {
+      const config = getLayerRefreshConfig(layer);
+      if (!config.enabled || !isRefreshableLayer(layer)) continue;
+
+      activeLayerIds.add(layer.id);
+      const existing = refreshTimersRef.current.get(layer.id);
+      if (existing?.intervalMs === config.intervalMs) continue;
+
+      if (existing) window.clearInterval(existing.timer);
+      const timer = window.setInterval(() => {
+        const latest = useAppStore
+          .getState()
+          .layers.find((candidate) => candidate.id === layer.id);
+        if (!latest) return;
+
+        const latestConfig = getLayerRefreshConfig(latest);
+        if (!latestConfig.enabled || !isRefreshableLayer(latest)) return;
+        void handleRefreshLayerRef.current(latest, true);
+      }, config.intervalMs);
+
+      refreshTimersRef.current.set(layer.id, {
+        intervalMs: config.intervalMs,
+        timer,
+      });
+    }
+
+    for (const [id, entry] of refreshTimersRef.current) {
+      if (activeLayerIds.has(id)) continue;
+      window.clearInterval(entry.timer);
+      refreshTimersRef.current.delete(id);
+    }
+  }, [layers]);
+
+  useEffect(() => {
+    return () => {
+      for (const entry of refreshTimersRef.current.values()) {
+        window.clearInterval(entry.timer);
+      }
+      refreshTimersRef.current.clear();
+      for (const timer of refreshStatusTimersRef.current.values()) {
+        window.clearTimeout(timer);
+      }
+      refreshStatusTimersRef.current.clear();
+    };
+  }, []);
+
+  const setRefreshInterval = useCallback(
+    (layer: GeoLibreLayer, intervalMs: number) => {
+      // Read the latest layer from the store so a concurrent refresh's
+      // metadata (e.g. featureCount) is not overwritten by a stale snapshot.
+      const latest =
+        useAppStore
+          .getState()
+          .layers.find((candidate) => candidate.id === layer.id) ?? layer;
+      updateLayer(
+        layer.id,
+        setLayerRefreshConfig(latest, {
+          enabled: intervalMs > 0,
+          intervalMs,
+        }),
+      );
+    },
+    [updateLayer],
+  );
 
   const handleLayerDragStart = (
     event: ReactDragEvent<HTMLElement>,
@@ -234,6 +524,10 @@ export function LayerPanel({
                 layer.metadata.tileType === "vector") ||
               hasNativeIdentifyLayers(layer);
             const identifyActive = identifyLayerId === layer.id;
+            const canRefresh = isRefreshableLayer(layer);
+            const refreshConfig = getLayerRefreshConfig(layer);
+            const refreshStatus = refreshStatuses[layer.id];
+            const isRefreshing = refreshStatus?.type === "refreshing";
             return (
               <div
                 key={layer.id}
@@ -300,6 +594,19 @@ export function LayerPanel({
                 {isPlaceholderLayer(layer) && (
                   <p className="mt-1 text-[10px] text-amber-600">
                     {placeholderMessage(layer)}
+                  </p>
+                )}
+                {refreshStatus && (
+                  <p
+                    className={`mt-1 text-[10px] ${
+                      refreshStatus.type === "error"
+                        ? "text-destructive"
+                        : refreshStatus.type === "success"
+                          ? "text-emerald-600"
+                          : "text-muted-foreground"
+                    }`}
+                  >
+                    {refreshStatus.message}
                   </p>
                 )}
                 <div className="mt-2 flex items-center gap-1">
@@ -390,6 +697,63 @@ export function LayerPanel({
                   >
                     <MousePointerClick className="h-3.5 w-3.5" />
                   </Button>
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className={`h-7 w-7 ${
+                          refreshConfig.enabled
+                            ? "border border-primary text-primary"
+                            : ""
+                        }`}
+                        title="Layer actions"
+                        aria-label="Layer actions"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <MoreHorizontal className="h-3.5 w-3.5" />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent
+                      align="end"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <DropdownMenuItem
+                        disabled={!canRefresh || isRefreshing}
+                        onSelect={(e) => {
+                          e.preventDefault();
+                          void handleRefreshLayer(layer);
+                        }}
+                      >
+                        <RefreshCw
+                          className={`mr-2 h-3.5 w-3.5 ${
+                            isRefreshing ? "animate-spin" : ""
+                          }`}
+                        />
+                        Refresh
+                      </DropdownMenuItem>
+                      <DropdownMenuItem
+                        disabled={!canRefresh}
+                        onSelect={(e) => {
+                          e.preventDefault();
+                          setRefreshSettingsLayerId(layer.id);
+                        }}
+                      >
+                        <Timer className="mr-2 h-3.5 w-3.5" />
+                        {refreshConfig.enabled
+                          ? "Auto refresh on"
+                          : "Auto refresh"}
+                      </DropdownMenuItem>
+                      {!canRefresh && (
+                        <>
+                          <DropdownMenuSeparator />
+                          <DropdownMenuItem disabled>
+                            WFS and GeoJSON URLs only
+                          </DropdownMenuItem>
+                        </>
+                      )}
+                    </DropdownMenuContent>
+                  </DropdownMenu>
                   <Button
                     variant="ghost"
                     size="icon"
@@ -486,6 +850,111 @@ export function LayerPanel({
         {/* TODO(v0.3): Add native PMTiles, COG, and FlatGeobuf layer types */}
         Advanced formats: see docs/roadmap.md
       </p>
+      <Dialog
+        open={!!refreshSettingsLayerId}
+        onOpenChange={(open) => {
+          if (!open) setRefreshSettingsLayerId(null);
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>
+              {refreshSettingsLayer?.name ?? "Layer"} Auto Refresh
+            </DialogTitle>
+            <DialogDescription>
+              Reload this layer from its source on a fixed interval.
+            </DialogDescription>
+          </DialogHeader>
+          {refreshSettingsLayer && (
+            <div className="space-y-3">
+              <Label htmlFor="layer-refresh-interval">Interval</Label>
+              <Select
+                id="layer-refresh-interval"
+                value={refreshIntervalChoice}
+                onChange={(event) => {
+                  const value = event.target.value;
+                  setRefreshIntervalChoice(value);
+                  if (value === CUSTOM_REFRESH_INTERVAL_VALUE) {
+                    const current = getLayerRefreshConfig(refreshSettingsLayer);
+                    setCustomRefreshSeconds(
+                      customRefreshIntervalSeconds(current.intervalMs),
+                    );
+                    return;
+                  }
+                  setCustomRefreshSeconds("");
+                  setRefreshInterval(refreshSettingsLayer, Number(value));
+                }}
+              >
+                {REFRESH_INTERVAL_OPTIONS.map((option) => (
+                  <option key={option.intervalMs} value={option.intervalMs}>
+                    {option.label}
+                  </option>
+                ))}
+                <option value={CUSTOM_REFRESH_INTERVAL_VALUE}>Custom</option>
+              </Select>
+              {refreshIntervalChoice === CUSTOM_REFRESH_INTERVAL_VALUE && (
+                <div className="space-y-2">
+                  <Label htmlFor="layer-refresh-custom-seconds">
+                    Custom interval (seconds)
+                  </Label>
+                  <div className="flex gap-2">
+                    <Input
+                      id="layer-refresh-custom-seconds"
+                      type="number"
+                      min="1"
+                      step="1"
+                      value={customRefreshSeconds}
+                      onChange={(event) =>
+                        setCustomRefreshSeconds(event.target.value)
+                      }
+                      onKeyDown={(event) => {
+                        if (
+                          event.key !== "Enter" ||
+                          !refreshSettingsLayer ||
+                          !customRefreshIntervalMs
+                        ) {
+                          return;
+                        }
+                        setRefreshInterval(
+                          refreshSettingsLayer,
+                          customRefreshIntervalMs,
+                        );
+                      }}
+                    />
+                    <Button
+                      type="button"
+                      disabled={!customRefreshIntervalMs}
+                      onClick={() => {
+                        if (!customRefreshIntervalMs) return;
+                        setRefreshInterval(
+                          refreshSettingsLayer,
+                          customRefreshIntervalMs,
+                        );
+                      }}
+                    >
+                      Apply
+                    </Button>
+                  </div>
+                  {!customRefreshIntervalMs && customRefreshSeconds.trim() && (
+                    <p className="text-xs text-destructive">
+                      Enter a positive number of seconds.
+                    </p>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+          <div className="flex justify-end">
+            <Button
+              type="button"
+              variant="ghost"
+              onClick={() => setRefreshSettingsLayerId(null)}
+            >
+              Close
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
       <Dialog
         open={!!metadataLayer}
         onOpenChange={(open) => {
