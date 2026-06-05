@@ -10,7 +10,7 @@ import {
   ScrollArea,
   Select,
 } from "@geolibre/ui";
-import openEOClient from "@openeo/js-client";
+import { OpenEO } from "@openeo/js-client";
 import {
   CheckCircle2,
   Download,
@@ -101,6 +101,20 @@ const DEFAULT_BACKEND_URL = "https://earthengine.openeo.org";
 const DEFAULT_COLLECTION = "COPERNICUS/S1_GRD";
 const DEFAULT_BANDS = "VV,VH";
 const DEFAULT_OUTPUT_FORMAT = "GTiff";
+const CONNECT_TIMEOUT_MS = 30_000;
+
+function withTimeout<T>(
+  promise: Promise<T>,
+  ms: number,
+  message: string,
+): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error(message)), ms);
+    promise
+      .then(resolve, reject)
+      .finally(() => clearTimeout(timer));
+  });
+}
 
 function parseBands(value: string): string[] | undefined {
   const bands = value
@@ -161,14 +175,14 @@ function formatError(error: unknown): string {
   return "The openEO request failed.";
 }
 
-function createReducer(builder: OpenEOBuilder, reducer: Reducer) {
+function createReducer(reducer: Exclude<Reducer, "none">) {
+  // The openEO JS client invokes reducer callbacks with `this` bound to the
+  // builder for the sub-process graph.
   return function reducerCallback(this: OpenEOBuilder, data: unknown): unknown {
-    const context = this ?? builder;
-    if (reducer === "mean") return context.mean(data);
-    if (reducer === "median") return context.median(data);
-    if (reducer === "min") return context.min(data);
-    if (reducer === "max") return context.max(data);
-    return data;
+    if (reducer === "mean") return this.mean(data);
+    if (reducer === "median") return this.median(data);
+    if (reducer === "min") return this.min(data);
+    return this.max(data);
   };
 }
 
@@ -243,15 +257,15 @@ export function OpenEODialog({ open, onOpenChange }: OpenEODialogProps) {
     resetConnectionState();
 
     try {
-      const nextConnection = (await openEOClient.OpenEO.connect(
-        url,
+      const nextConnection = (await withTimeout(
+        OpenEO.connect(url),
+        CONNECT_TIMEOUT_MS,
+        "Connecting to the openEO backend timed out.",
       )) as unknown as OpenEOConnection;
       if (authEnabled) {
         await nextConnection.authenticateBasic(username.trim(), password);
       }
       const nextCapabilities = nextConnection.capabilities();
-      setConnection(nextConnection);
-      setCapabilities(nextCapabilities);
       setStatusMessage(
         `Connected to API ${nextCapabilities.apiVersion() || "unknown"}.`,
       );
@@ -260,6 +274,8 @@ export function OpenEODialog({ open, onOpenChange }: OpenEODialogProps) {
         nextConnection.listCollections(),
         nextConnection.listProcesses(),
       ]);
+      setConnection(nextConnection);
+      setCapabilities(nextCapabilities);
       const nextCollections = collectionResponse.collections ?? [];
       const nextProcesses = processResponse.processes ?? [];
       setCollections(nextCollections);
@@ -284,6 +300,9 @@ export function OpenEODialog({ open, onOpenChange }: OpenEODialogProps) {
     if (!startDate || !endDate) {
       throw new Error("Enter start and end dates.");
     }
+    if (startDate >= endDate) {
+      throw new Error("Start date must be before end date.");
+    }
 
     const bbox = buildBoundingBox({ west, south, east, north });
     const builder = await connection.buildProcess("geolibre-openeo-job");
@@ -297,7 +316,7 @@ export function OpenEODialog({ open, onOpenChange }: OpenEODialogProps) {
     if (reducer !== "none") {
       datacube = builder.reduce_dimension(
         datacube,
-        createReducer(builder, reducer),
+        createReducer(reducer),
         dimension.trim() || "t",
       );
     }
@@ -497,9 +516,9 @@ export function OpenEODialog({ open, onOpenChange }: OpenEODialogProps) {
                   </div>
                   <div className="max-h-64 overflow-auto">
                     {visibleCollections.length ? (
-                      visibleCollections.map((collection) => (
+                      visibleCollections.map((collection, index) => (
                         <button
-                          key={collection.id}
+                          key={collection.id ?? `collection-${index}`}
                           className="block w-full border-b px-3 py-2 text-left text-sm hover:bg-accent"
                           type="button"
                           onClick={() =>
@@ -538,8 +557,11 @@ export function OpenEODialog({ open, onOpenChange }: OpenEODialogProps) {
                   </div>
                   <div className="max-h-64 overflow-auto">
                     {visibleProcesses.length ? (
-                      visibleProcesses.map((process) => (
-                        <div key={process.id} className="border-b px-3 py-2">
+                      visibleProcesses.map((process, index) => (
+                        <div
+                          key={process.id ?? `process-${index}`}
+                          className="border-b px-3 py-2"
+                        >
                           <span className="block truncate text-sm font-medium">
                             {process.id}
                           </span>
@@ -771,7 +793,7 @@ export function OpenEODialog({ open, onOpenChange }: OpenEODialogProps) {
                           {job.status || "unknown"}
                         </span>
                         <span className="truncate text-xs text-muted-foreground">
-                          {job.created || job.id}
+                          {job.created || "—"}
                         </span>
                       </div>
                     ))

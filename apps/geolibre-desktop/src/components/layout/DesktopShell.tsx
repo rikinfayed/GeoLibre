@@ -56,9 +56,19 @@ const ProcessingDialog = lazy(() =>
 );
 
 const OpenEODialog = lazy(() =>
-  import("../openeo/OpenEODialog").then((module) => ({
-    default: module.OpenEODialog,
-  })),
+  import("../openeo/OpenEODialog")
+    .then((module) => ({
+      default: module.OpenEODialog,
+    }))
+    .catch((error) => {
+      // A failed chunk load (network error, corrupted bundle) would otherwise
+      // throw during render and unmount the whole shell. Fall back to a
+      // no-op component so the rest of the app stays interactive.
+      console.error("Failed to load OpenEODialog", error);
+      const Fallback = (() =>
+        null) as unknown as typeof import("../openeo/OpenEODialog").OpenEODialog;
+      return { default: Fallback };
+    }),
 );
 
 interface DesktopShellProps {
