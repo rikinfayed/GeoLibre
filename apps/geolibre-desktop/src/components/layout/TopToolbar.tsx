@@ -692,6 +692,7 @@ export function TopToolbar({
               </DropdownMenuItem>
             </DropdownMenuSubContent>
           </DropdownMenuSub>
+          <DropdownMenuSeparator />
           <DropdownMenuItem onSelect={onOpenOpenEO}>openEO</DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
