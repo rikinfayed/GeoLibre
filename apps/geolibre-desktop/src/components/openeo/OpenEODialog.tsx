@@ -97,6 +97,8 @@ interface OpenEOBoundingBox {
 
 type Reducer = "none" | "mean" | "median" | "min" | "max";
 
+type BusyAction = "connect" | "job" | "jobs" | "download";
+
 const DEFAULT_BACKEND_URL = "https://earthengine.openeo.org";
 const DEFAULT_COLLECTION = "COPERNICUS/S1_GRD";
 const DEFAULT_BANDS = "VV,VH";
@@ -113,6 +115,8 @@ function withTimeout<T>(
     promise
       .then(resolve, reject)
       .finally(() => clearTimeout(timer));
+    // NOTE: the underlying request is not cancelled when the timer fires;
+    // the resolved/rejected value will be silently discarded.
   });
 }
 
@@ -216,7 +220,7 @@ export function OpenEODialog({ open, onOpenChange }: OpenEODialogProps) {
   const [startImmediately, setStartImmediately] = useState(true);
   const [downloadFilename, setDownloadFilename] =
     useState("openeo-result.tif");
-  const [busyAction, setBusyAction] = useState<string | null>(null);
+  const [busyAction, setBusyAction] = useState<BusyAction | null>(null);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
