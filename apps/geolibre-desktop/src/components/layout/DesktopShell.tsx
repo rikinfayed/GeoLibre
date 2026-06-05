@@ -55,6 +55,12 @@ const ProcessingDialog = lazy(() =>
     }),
 );
 
+const OpenEODialog = lazy(() =>
+  import("../openeo/OpenEODialog").then((module) => ({
+    default: module.OpenEODialog,
+  })),
+);
+
 interface DesktopShellProps {
   layoutOptions: LayoutOptions;
   projectUrlLoadState?: ProjectUrlLoadState;
@@ -109,6 +115,7 @@ export function DesktopShell({
   const [dropMessage, setDropMessage] = useState<string | null>(null);
   const [dropError, setDropError] = useState<string | null>(null);
   const [diagnosticsOpen, setDiagnosticsOpen] = useState(false);
+  const [openEOOpen, setOpenEOOpen] = useState(false);
   const diagnostics = useDiagnosticsSnapshot();
   const externalPluginsReady = useExternalPluginsReady();
   const [layerPanelWidth, setLayerPanelWidth] = useState(
@@ -469,6 +476,7 @@ export function DesktopShell({
         showProjectInfo={layoutOptions.showProjectInfo}
         themeMode={themeMode}
         onOpenDiagnostics={() => setDiagnosticsOpen(true)}
+        onOpenOpenEO={() => setOpenEOOpen(true)}
         onToggleThemeMode={onToggleThemeMode}
       />
       <div className="flex min-h-0 flex-1 flex-col md:flex-row">
@@ -507,6 +515,7 @@ export function DesktopShell({
       />
       <Suspense fallback={null}>
         <ProcessingDialog mapControllerRef={mapControllerRef} />
+        <OpenEODialog open={openEOOpen} onOpenChange={setOpenEOOpen} />
       </Suspense>
       <div
         ref={verticalResizeGuideRef}

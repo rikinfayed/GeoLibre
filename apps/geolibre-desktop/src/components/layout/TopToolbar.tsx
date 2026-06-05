@@ -110,6 +110,7 @@ interface TopToolbarProps {
   showProjectInfo?: boolean;
   themeMode: ThemeMode;
   onOpenDiagnostics: () => void;
+  onOpenOpenEO: () => void;
   onToggleThemeMode: () => void;
 }
 
@@ -170,6 +171,7 @@ export function TopToolbar({
   showProjectInfo = true,
   themeMode,
   onOpenDiagnostics,
+  onOpenOpenEO,
   onToggleThemeMode,
 }: TopToolbarProps) {
   const loadProject = useAppStore((s) => s.loadProject);
@@ -690,6 +692,7 @@ export function TopToolbar({
               </DropdownMenuItem>
             </DropdownMenuSubContent>
           </DropdownMenuSub>
+          <DropdownMenuItem onSelect={onOpenOpenEO}>openEO</DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
       <DropdownMenu>

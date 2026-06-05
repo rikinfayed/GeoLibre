@@ -28,6 +28,7 @@
     "@geolibre/processing": "*",
     "@geolibre/ui": "*",
     "@geoman-io/maplibre-geoman-free": "^0.7.1",
+    "@openeo/js-client": "^2.12.0",
     "@tauri-apps/api": "^2.2.0",
     "@tauri-apps/plugin-dialog": "^2.2.0",
     "@tauri-apps/plugin-fs": "^2.2.0",
