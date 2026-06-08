@@ -84,6 +84,12 @@ https://viewer.geolibre.app/?url=https://share.geolibre.app/giswqs/3d-tiles.geol
 
 Use `toolbar=icons` when you only want icon-only toolbar buttons. `panels=hidden`, `panels=hide`, `panels=off`, and `hidePanels=true` are accepted aliases for hiding panels.
 
+For a fully chrome-free, map-only embed, add `&maponly` to hide the toolbar menu, all panels, and the status bar:
+
+```text
+https://viewer.geolibre.app/?url=https://share.geolibre.app/giswqs/3d-tiles.geolibre.json&maponly
+```
+
 | Parameter | Example | Description |
 | --- | --- | --- |
 | `url` | `url=https://share.geolibre.app/giswqs/3d-tiles.geolibre.json` | Loads a `.geolibre.json` project from a public URL. |
@@ -91,6 +97,7 @@ Use `toolbar=icons` when you only want icon-only toolbar buttons. `panels=hidden
 | `toolbar` | `toolbar=icons` | Shows icon-only toolbar buttons without enabling the full compact layout. |
 | `panels` | `panels=none` | Hides the Layers, Style, and Attribute table panels. `hidden`, `hide`, and `off` are aliases. |
 | `hidePanels` | `hidePanels=true` | Alternative way to hide the Layers, Style, and Attribute table panels. |
+| `maponly` | `maponly` | Hides all chrome (toolbar menu, Layers/Style/Attribute panels, and status bar), leaving only the map. The bare flag or any of `true`, `1`, `yes`, `on` enable it. |
 
 [Open the live demo](https://viewer.geolibre.app/){ .md-button .md-button--primary }
 [Read the architecture](architecture.md){ .md-button }

@@ -10,13 +10,16 @@ export interface LayoutOptions {
   compact: boolean;
   layerPanelVisible: boolean;
   showProjectInfo: boolean;
+  statusBarVisible: boolean;
   stylePanelVisible: boolean;
   toolbarLabels: boolean;
+  toolbarVisible: boolean;
 }
 
 const COMPACT_LAYOUT_VALUES = new Set(["compact", "embed", "iframe"]);
 const ICON_TOOLBAR_VALUES = new Set(["icon", "icons", "icon-only"]);
 const HIDDEN_PANEL_VALUES = new Set(["hidden", "hide", "none", "off"]);
+const MAP_ONLY_VALUES = new Set(["", "true", "1", "yes", "on"]);
 
 export function useLayoutOptions(): LayoutOptions {
   // Shallow equality keeps unrelated desktop-settings updates (which always
@@ -30,19 +33,31 @@ export function useLayoutOptions(): LayoutOptions {
   );
 }
 
-function layoutOptionsFromLocation(
+export function layoutOptionsFromLocation(
   layoutSettings: DesktopLayoutSettings,
 ): LayoutOptions {
   if (typeof window === "undefined") {
-    return { compact: false, ...layoutSettings };
+    return {
+      compact: false,
+      statusBarVisible: true,
+      toolbarVisible: true,
+      ...layoutSettings,
+    };
   }
 
   const params = new URLSearchParams(window.location.search);
   const layout = normalizedParam(params.get("layout"));
   const panels = normalizedParam(params.get("panels"));
   const toolbar = normalizedParam(params.get("toolbar"));
-  const compact = COMPACT_LAYOUT_VALUES.has(layout);
+  // `maponly` hides the entire chrome (toolbar, panels, status bar), leaving
+  // only the map. The param can be a bare flag (`?maponly`) or an explicit
+  // truthy value (`?maponly=true`).
+  const mapOnly =
+    params.has("maponly") &&
+    MAP_ONLY_VALUES.has(normalizedParam(params.get("maponly")));
+  const compact = mapOnly || COMPACT_LAYOUT_VALUES.has(layout);
   const panelsHidden =
+    mapOnly ||
     HIDDEN_PANEL_VALUES.has(panels) ||
     normalizedParam(params.get("hidePanels")) === "true";
   const toolbarLabels =
@@ -65,8 +80,10 @@ function layoutOptionsFromLocation(
     compact,
     layerPanelVisible,
     showProjectInfo,
+    statusBarVisible: !mapOnly,
     stylePanelVisible,
     toolbarLabels,
+    toolbarVisible: !mapOnly,
   };
 }
 

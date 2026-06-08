@@ -490,16 +490,18 @@ export function DesktopShell({
       onDragOver={handleDragOver}
       onDrop={handleDrop}
     >
-      <TopToolbar
-        compact={layoutOptions.compact}
-        diagnosticsErrorCount={diagnostics.errorCount}
-        mapControllerRef={mapControllerRef}
-        showLabels={layoutOptions.toolbarLabels}
-        showProjectInfo={layoutOptions.showProjectInfo}
-        themeMode={themeMode}
-        onOpenDiagnostics={() => setDiagnosticsOpen(true)}
-        onToggleThemeMode={onToggleThemeMode}
-      />
+      {layoutOptions.toolbarVisible ? (
+        <TopToolbar
+          compact={layoutOptions.compact}
+          diagnosticsErrorCount={diagnostics.errorCount}
+          mapControllerRef={mapControllerRef}
+          showLabels={layoutOptions.toolbarLabels}
+          showProjectInfo={layoutOptions.showProjectInfo}
+          themeMode={themeMode}
+          onOpenDiagnostics={() => setDiagnosticsOpen(true)}
+          onToggleThemeMode={onToggleThemeMode}
+        />
+      ) : null}
       <div className="flex min-h-0 flex-1 flex-col md:flex-row">
         {layoutOptions.layerPanelVisible ? (
           <LayerPanel
@@ -526,12 +528,14 @@ export function DesktopShell({
         ) : null}
       </div>
       {layoutOptions.attributePanelVisible ? <AttributeTable /> : null}
-      <StatusBar
-        compact={layoutOptions.compact}
-        diagnosticsErrorCount={diagnostics.errorCount}
-        diagnosticsWarningCount={diagnostics.warningCount}
-        onOpenDiagnostics={() => setDiagnosticsOpen(true)}
-      />
+      {layoutOptions.statusBarVisible ? (
+        <StatusBar
+          compact={layoutOptions.compact}
+          diagnosticsErrorCount={diagnostics.errorCount}
+          diagnosticsWarningCount={diagnostics.warningCount}
+          onOpenDiagnostics={() => setDiagnosticsOpen(true)}
+        />
+      ) : null}
       <DiagnosticsDialog
         diagnostics={diagnostics}
         open={diagnosticsOpen}
