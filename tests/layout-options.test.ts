@@ -41,7 +41,9 @@ describe("layoutOptionsFromLocation", () => {
   });
 
   it("accepts truthy maponly values", () => {
-    for (const value of ["true", "1", "yes", "on"]) {
+    // Includes an explicit empty value (`?maponly=`) and mixed case to
+    // exercise the `""` entry and `normalizedParam`'s lowercasing.
+    for (const value of ["", "true", "1", "yes", "on", "TRUE", "Yes"]) {
       withSearch(`?maponly=${value}`);
       const options = layoutOptionsFromLocation(DEFAULT_DESKTOP_LAYOUT_SETTINGS);
       assert.equal(options.toolbarVisible, false, `maponly=${value}`);

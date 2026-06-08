@@ -38,10 +38,10 @@ export function layoutOptionsFromLocation(
 ): LayoutOptions {
   if (typeof window === "undefined") {
     return {
+      ...layoutSettings,
       compact: false,
       statusBarVisible: true,
       toolbarVisible: true,
-      ...layoutSettings,
     };
   }
 

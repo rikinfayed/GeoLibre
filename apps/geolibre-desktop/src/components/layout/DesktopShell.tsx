@@ -490,6 +490,11 @@ export function DesktopShell({
       onDragOver={handleDragOver}
       onDrop={handleDrop}
     >
+      {/*
+        In map-only mode the toolbar and status bar are hidden, so the
+        diagnostics error badge/counter they host are intentionally not
+        rendered. Errors still accumulate in state for the chrome-free embed.
+      */}
       {layoutOptions.toolbarVisible ? (
         <TopToolbar
           compact={layoutOptions.compact}
