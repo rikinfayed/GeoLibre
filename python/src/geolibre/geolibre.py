@@ -6,6 +6,7 @@ import copy
 import json
 import os
 import pathlib
+import warnings
 from typing import Any, Callable
 
 import anywidget
@@ -24,7 +25,7 @@ _VALID_LAYOUTS = frozenset({"embed", "full", "maponly"})
 _VALID_THEMES = frozenset({"light", "dark"})
 
 
-def _read_local_vector(path: Any) -> dict[str, Any]:
+def _read_local_vector(path: Any, data_format: str | None = None) -> dict[str, Any]:
     """Read a local vector file into a GeoJSON FeatureCollection via GeoPandas.
 
     The browser cannot read a file that lives on the kernel host, so a local
@@ -35,6 +36,9 @@ def _read_local_vector(path: Any) -> dict[str, Any]:
     Args:
         path: Filesystem path to a vector file (Shapefile, GeoParquet,
             FlatGeobuf, GeoPackage, ...).
+        data_format: Optional format hint (e.g. ``"parquet"``) that overrides
+            filename-suffix detection, so a GeoParquet file saved under a
+            non-standard name still uses the dedicated Parquet reader.
 
     Returns:
         A GeoJSON FeatureCollection dict in EPSG:4326.
@@ -55,8 +59,12 @@ def _read_local_vector(path: Any) -> dict[str, Any]:
             "`pip install geopandas`, or pass a URL to a hosted dataset instead."
         ) from exc
     # GeoPandas' GDAL-backed read_file may lack the Parquet driver depending on
-    # the GDAL build, so dispatch (Geo)Parquet to the dedicated reader.
-    if file_path.suffix.lower() in (".parquet", ".geoparquet", ".pq"):
+    # the GDAL build, so dispatch (Geo)Parquet to the dedicated reader. Honour an
+    # explicit format hint so a Parquet file under a non-standard name still works.
+    is_parquet = (data_format or "").lower() in ("parquet", "geoparquet") or (
+        file_path.suffix.lower() in (".parquet", ".geoparquet", ".pq")
+    )
+    if is_parquet:
         gdf = geopandas.read_parquet(file_path)
     else:
         gdf = geopandas.read_file(file_path)
@@ -540,7 +548,17 @@ class Map(anywidget.AnyWidget):
             )
         if hasattr(data, "__geo_interface__"):
             return self.add_geojson(data, name=name, **style)
-        fc = _read_local_vector(data)
+        # A local file is read and inlined as GeoJSON; render_mode and
+        # source_layer only apply to the in-browser vector control (remote URLs),
+        # so flag them as no-ops here rather than dropping them silently.
+        if render_mode != "geojson" or source_layer is not None:
+            warnings.warn(
+                "render_mode and source_layer are ignored for local files; they "
+                "only apply to remote URLs handled by the in-browser vector "
+                "control.",
+                stacklevel=2,
+            )
+        fc = _read_local_vector(data, data_format=data_format)
         return self._add_layer(_project.geojson_layer(name, fc, **style))
 
     def add_geoparquet(self, data: Any, name: str = "GeoParquet", **style: Any) -> str:

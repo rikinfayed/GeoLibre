@@ -193,12 +193,16 @@ def test_pmtiles_layer_vector_shape():
     assert md["sourceKind"] == "pmtiles-url"
     assert md["externalNativeLayer"] is True
     assert md["sourceLayers"] == ["roads"]
+    # nativeLayerIds must be non-empty or isExternalNativeLayer() skips render.
+    assert md["nativeLayerIds"] == [layer["id"]]
 
 
 def test_pmtiles_layer_raster_shape():
     layer = project.pmtiles_layer("P", "https://e/r.pmtiles", tile_type="raster")
     assert layer["source"]["type"] == "raster"
     assert layer["metadata"]["tileType"] == "raster"
+    # Raster placeholder matches ensurePMTilesExternalLayer's computed fallback.
+    assert layer["metadata"]["nativeLayerIds"] == [f"{layer['id']}-raster"]
 
 
 def test_pmtiles_layer_invalid_tile_type():
@@ -252,6 +256,13 @@ def test_video_layer_requires_four_corners():
 def test_video_layer_rejects_non_https():
     with pytest.raises(ValueError, match="https://"):
         project.video_layer("Vid", ["http://e/a.mp4"], [[0, 0], [1, 0], [1, 1], [0, 1]])
+
+
+def test_video_layer_rejects_non_string_url():
+    with pytest.raises(ValueError, match="non-empty string"):
+        project.video_layer(
+            "Vid", ["https://e/a.mp4", None], [[0, 0], [1, 0], [1, 1], [0, 1]]
+        )
 
 
 def test_load_featurecollection_passthrough():

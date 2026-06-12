@@ -532,8 +532,13 @@ def vector_layer(
         # The control owns its layers' paint; the core sync must not re-apply it.
         "controlOwnsPaint": True,
         "identifiable": False,
-        # The control re-derives these on load; the post-load sync overwrites
-        # them with the real ids it creates, so empty placeholders are fine.
+        # Empty is safe here (unlike pmtiles_layer): restoreVectorLayers detects
+        # the layer via isVectorControlStoreLayer (sourceKind + externalNativeLayer,
+        # not list length) and loads it through the control's async addData;
+        # syncVectorLayersToStore then fills in the real nativeLayerIds.
+        # Caveat: render_mode="tiles" yields a type:"vector-tiles" layer that,
+        # before the control loads, briefly falls through to syncVectorTileLayer
+        # until that store sync replaces these ids.
         "nativeLayerIds": [],
         "sourceIds": [f"{layer['id']}-source"],
         "vectorSource": "url",
@@ -615,13 +620,20 @@ def pmtiles_layer(
         "sourceLayers": source_layers,
         "tileType": tile_type,
     }
+    # nativeLayerIds must be non-empty: isExternalNativeLayer() in layer-sync.ts
+    # gates on its length, and a "pmtiles" layer has no fallback dispatch in
+    # syncLayer, so an empty list means the source/layers are never added.
+    # ensurePMTilesExternalLayer tolerates these placeholders — for raster it
+    # matches the `${sourceId}-raster` fallback it would otherwise compute; for
+    # vector getPMTilesNativeLayerId derives the real per-source-layer ids.
+    native_layer_ids = [f"{source_id}-raster"] if tile_type == "raster" else [source_id]
     layer["metadata"] = {
         "sourceKind": "pmtiles-url",
         "externalNativeLayer": True,
         "sourceId": source_id,
         "tileType": tile_type,
         "sourceLayers": source_layers,
-        "nativeLayerIds": [],
+        "nativeLayerIds": native_layer_ids,
     }
     layer["sourcePath"] = url
     return layer
@@ -700,9 +712,16 @@ def video_layer(
             browser's ``media-src`` CSP blocks ``http://``), or ``coordinates``
             is not four ``[lng, lat]`` pairs.
     """
-    clean_urls = [u for u in urls if isinstance(u, str) and u]
-    if not clean_urls:
+    if not urls:
         raise ValueError("video_layer requires at least one non-empty URL")
+    # Validate strictly rather than silently dropping a None/non-string entry,
+    # which would mask a malformed call and build a layer with fewer URLs.
+    invalid = [u for u in urls if not (isinstance(u, str) and u)]
+    if invalid:
+        raise ValueError(
+            f"video_layer: every URL must be a non-empty string; got {invalid!r}"
+        )
+    clean_urls = list(urls)
     if any(not u.lower().startswith("https://") for u in clean_urls):
         raise ValueError(
             "Video URLs must start with https:// (the browser CSP blocks http://)"

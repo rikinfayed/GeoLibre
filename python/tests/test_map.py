@@ -140,11 +140,28 @@ def test_add_wfs_inlines_geojson(monkeypatch, m):
 
 def test_add_vector_local_file_inlined(monkeypatch, m):
     fake_fc = {"type": "FeatureCollection", "features": []}
-    monkeypatch.setattr(gmod, "_read_local_vector", lambda _p: fake_fc)
-    m.add_vector("/data/parcels.shp")
+    captured = {}
+
+    def fake_read(path, data_format=None):
+        captured["path"] = path
+        captured["data_format"] = data_format
+        return fake_fc
+
+    monkeypatch.setattr(gmod, "_read_local_vector", fake_read)
+    # add_geoparquet routes a local path with the parquet hint threaded through.
+    m.add_geoparquet("/data/cities.parquet")
     layer = _last_layer(m)
     assert layer["type"] == "geojson"
     assert layer["geojson"] == fake_fc
+    assert captured["data_format"] == "parquet"
+
+
+def test_add_vector_local_file_warns_on_ignored_kwargs(monkeypatch, m):
+    monkeypatch.setattr(
+        gmod, "_read_local_vector", lambda _p, data_format=None: {"type": "x"}
+    )
+    with pytest.warns(UserWarning, match="ignored for local files"):
+        m.add_vector("/data/parcels.shp", source_layer="layer0")
 
 
 def test_add_vector_geo_interface_inlined(m):
