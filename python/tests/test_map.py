@@ -138,6 +138,24 @@ def test_add_wfs_inlines_geojson(monkeypatch, m):
     assert layer["source"]["outputFormat"] == "application/json"
 
 
+def test_add_wfs_xml_response_gives_hint(monkeypatch, m):
+    def boom(_url):
+        raise ValueError("Could not interpret input as GeoJSON")
+
+    monkeypatch.setattr(gmod._project, "load_featurecollection", boom)
+    with pytest.raises(ValueError, match="did not return GeoJSON"):
+        m.add_wfs("https://e/wfs", "topp:states")
+
+
+def test_add_wfs_preserves_other_errors(monkeypatch, m):
+    def boom(_url):
+        raise ValueError("GeoJSON response exceeds the 50 MB size limit")
+
+    monkeypatch.setattr(gmod._project, "load_featurecollection", boom)
+    with pytest.raises(ValueError, match="50 MB size limit"):
+        m.add_wfs("https://e/wfs", "topp:states")
+
+
 def test_add_vector_local_file_inlined(monkeypatch, m):
     fake_fc = {"type": "FeatureCollection", "features": []}
     captured = {}

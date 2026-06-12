@@ -478,7 +478,19 @@ class Map(anywidget.AnyWidget):
             srs_name=srs_name,
             max_features=max_features,
         )
-        fc = _project.load_featurecollection(url)
+        try:
+            fc = _project.load_featurecollection(url)
+        except ValueError as exc:
+            # A WFS server that does not support GeoJSON returns GML/XML, which
+            # surfaces as the generic parse error; add an actionable hint (size
+            # and SSRF errors keep their original message).
+            if "Could not interpret input as GeoJSON" in str(exc):
+                raise ValueError(
+                    "The WFS request did not return GeoJSON (the server likely "
+                    f"returned XML). Check the typeName and that "
+                    f"output_format={output_format!r} yields GeoJSON."
+                ) from exc
+            raise
         layer = _project.geojson_layer(name, fc, source_url=url, **style)
         # Mirror the protocol fields the UI persists on the source so the Edit
         # Layer panel can pre-populate the WFS form and isWfsLayer() recognizes
