@@ -15,12 +15,22 @@ export type { PgliteModules };
 
 /** Load PGlite and the PostGIS extension from the CDN (embed build only). */
 export async function loadPgliteModules(): Promise<PgliteModules> {
+  // The URLs are only injected (non-null) in the embed build that swaps this
+  // module in via pgliteCdnLoaderPlugin. Fail fast with a clear message if this
+  // loader is somehow reached without them, rather than rewrapping a cryptic
+  // `import(null)` failure as the generic "needs network access" error below.
+  // The guard also narrows the `string | null` defines to `string` for the
+  // dynamic imports.
+  if (!__PGLITE_CDN_URL__ || !__PGLITE_POSTGIS_CDN_URL__) {
+    throw new Error(
+      "PGlite CDN URLs were not injected. This loader is only meant for the " +
+        "embed build (GEOLIBRE_PGLITE_CDN=1).",
+    );
+  }
   try {
     const [{ PGlite }, { postgis }] = await Promise.all([
-      // Non-null assertions: this module is only resolved in the embed build
-      // (GEOLIBRE_PGLITE_CDN=1), where vite.config.ts injects real URL strings.
-      import(/* @vite-ignore */ __PGLITE_CDN_URL__!),
-      import(/* @vite-ignore */ __PGLITE_POSTGIS_CDN_URL__!),
+      import(/* @vite-ignore */ __PGLITE_CDN_URL__),
+      import(/* @vite-ignore */ __PGLITE_POSTGIS_CDN_URL__),
     ]);
     return { PGlite: PGlite as PgliteModules["PGlite"], postgis };
   } catch (err) {
