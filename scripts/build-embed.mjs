@@ -54,8 +54,9 @@ const assetsDir = resolve(distDir, "assets");
 // stops excluding the package, Rollup emits `pglite-<hash>.js` and the wheel
 // would regrow even without the WASM/data assets. The JS arm is anchored to
 // `pglite-<alnum-hash>.js` so it does not spuriously match a `pglite-loader-*`
-// chunk (the `-` in `loader` breaks the `\w+` run) should Rollup ever split the
-// statically-imported loader module into its own chunk.
+// chunk (the `-` after `loader` in `pglite-loader-*` stops `\w+` from matching
+// past it) should Rollup ever split the statically-imported loader module into
+// its own chunk.
 const pgliteAssetRe =
   /^(?:postgis\.tar|pglite|initdb).*\.(?:gz|wasm|data)$|^pglite-\w+\.js$/;
 const leaked = readdirSync(assetsDir).filter((name) => pgliteAssetRe.test(name));

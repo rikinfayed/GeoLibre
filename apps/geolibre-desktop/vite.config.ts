@@ -301,7 +301,13 @@ function pgliteCdnLoaderPlugin(): Plugin {
   return {
     name: "geolibre-pglite-cdn-loader",
     enforce: "pre",
-    resolveId(source) {
+    resolveId(source, importer) {
+      // Never redirect imports originating from the CDN loader itself: it has
+      // `import type { PgliteModules } from "./pglite-loader"`, which would
+      // otherwise resolve back to this same module. The type-only import is
+      // stripped before Rollup today, but the guard future-proofs against a
+      // value import being added there (which would self-reference).
+      if (importer === cdnLoader) return null;
       // Match `./pglite-loader` (and `.ts`) but never `pglite-loader.cdn`.
       return /(?:^|\/)pglite-loader(?:\.ts)?$/.test(source) ? cdnLoader : null;
     },
