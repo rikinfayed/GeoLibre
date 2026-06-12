@@ -18,7 +18,9 @@ export interface PgliteModules {
 
 /** Load the bundled PGlite engine and PostGIS extension. */
 export async function loadPgliteModules(): Promise<PgliteModules> {
-  const { PGlite } = await import("@electric-sql/pglite");
-  const { postgis } = await import("@electric-sql/pglite-postgis");
+  const [{ PGlite }, { postgis }] = await Promise.all([
+    import("@electric-sql/pglite"),
+    import("@electric-sql/pglite-postgis"),
+  ]);
   return { PGlite: PGlite as PgliteModules["PGlite"], postgis };
 }

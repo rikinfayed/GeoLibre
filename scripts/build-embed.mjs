@@ -48,8 +48,12 @@ if (result.status !== 0) {
 // 19.6 MB postgis.tar (and PGlite wasm/data) would silently re-inflate the wheel.
 const assetsDir = resolve(distDir, "assets");
 // Matches the content-hashed PGlite assets, e.g. postgis.tar-<hash>.gz,
-// pglite-<hash>.wasm, pglite-<hash>.data, initdb-<hash>.wasm.
-const pgliteAssetRe = /^(?:postgis\.tar|pglite|initdb).*\.(?:gz|wasm|data)$/;
+// pglite-<hash>.wasm, pglite-<hash>.data, initdb-<hash>.wasm. Also catches a
+// leaked pglite-<hash>.js chunk: manualChunks() names any @electric-sql/pglite
+// import "pglite", so if the loader module-swap stops excluding the package,
+// Rollup would emit that JS chunk and the wheel would regrow even without the
+// WASM/data assets.
+const pgliteAssetRe = /^(?:postgis\.tar|pglite|initdb).*\.(?:gz|wasm|data|js)$/;
 const leaked = readdirSync(assetsDir).filter((name) => pgliteAssetRe.test(name));
 if (leaked.length > 0) {
   console.error(

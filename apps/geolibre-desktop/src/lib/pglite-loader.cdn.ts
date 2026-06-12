@@ -17,8 +17,10 @@ export type { PgliteModules };
 export async function loadPgliteModules(): Promise<PgliteModules> {
   try {
     const [{ PGlite }, { postgis }] = await Promise.all([
-      import(/* @vite-ignore */ __PGLITE_CDN_URL__),
-      import(/* @vite-ignore */ __PGLITE_POSTGIS_CDN_URL__),
+      // Non-null assertions: this module is only resolved in the embed build
+      // (GEOLIBRE_PGLITE_CDN=1), where vite.config.ts injects real URL strings.
+      import(/* @vite-ignore */ __PGLITE_CDN_URL__!),
+      import(/* @vite-ignore */ __PGLITE_POSTGIS_CDN_URL__!),
     ]);
     return { PGlite: PGlite as PgliteModules["PGlite"], postgis };
   } catch (err) {

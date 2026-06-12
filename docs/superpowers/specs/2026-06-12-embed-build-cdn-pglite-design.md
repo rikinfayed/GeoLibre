@@ -55,10 +55,18 @@ wheel embeds the whole `dist-embed/` tree, so those lazy chunks plus the 19.6 MB
 
 ## Approach
 
-A build-time flag, set only by the embed build, flips the dynamic `import()` in
-`pglite-workspace.ts` from the bundled package to a version-pinned jsDelivr URL.
-The bundled branch is dead-code-eliminated in embed mode, so Vite never emits the
-pglite chunk, `.wasm`, `.data`, or `postgis.tar`.
+A build-time flag, set only by the embed build, swaps the entire PGlite **loader
+module** for a CDN variant at Rollup's `resolveId` stage. Because the bundled
+loader is no longer in the module graph, Vite never emits the pglite chunk,
+`.wasm`, `.data`, or `postgis.tar`.
+
+> **Note:** an earlier draft of this design used a single loader module with an
+> `if (__PGLITE_CDN__) { ... } else { ... }` branch, relying on Rollup to
+> tree-shake the dead bundled branch. That approach was **not** shipped: a
+> bundler emits a chunk for every `import()` it parses regardless of dead-code
+> reachability, so the dead branch would still vendor the pglite chunk into the
+> wheel. Sections 2 and 3 below describe the module-swap design that was
+> actually built.
 
 ### 1. Flag plumbing
 
@@ -69,41 +77,39 @@ alongside the existing `GEOLIBRE_APP_BASE=./`.
 
 Read the env var. Using `createRequire`, read the **installed** versions of
 `@electric-sql/pglite` and `@electric-sql/pglite-postgis` from their
-`package.json` so the CDN URLs cannot drift from the lockfile. Inject three
+`package.json` so the CDN URLs cannot drift from the lockfile. Inject two
 `define` constants:
 
-- `__PGLITE_CDN__`: `true` / `false`
 - `__PGLITE_CDN_URL__`:
   `"https://cdn.jsdelivr.net/npm/@electric-sql/pglite@<ver>/dist/index.js"`
   (or `null` when not in embed mode)
 - `__PGLITE_POSTGIS_CDN_URL__`: the same for `pglite-postgis` (or `null`)
 
-### 3. Runtime branch (`apps/geolibre-desktop/src/lib/pglite-workspace.ts`)
+Also register `pgliteCdnLoaderPlugin()` (only when `GEOLIBRE_PGLITE_CDN=1`): a
+Vite/Rollup plugin whose `resolveId` redirects any import of `./pglite-loader`
+(but never `pglite-loader.cdn`) to `src/lib/pglite-loader.cdn.ts`.
 
-In `getState()`:
+### 3. Loader modules (`apps/geolibre-desktop/src/lib/pglite-loader*.ts`)
 
-```js
-let pgliteMod, postgisMod;
-if (__PGLITE_CDN__) {
-  pgliteMod  = await import(/* @vite-ignore */ __PGLITE_CDN_URL__);
-  postgisMod = await import(/* @vite-ignore */ __PGLITE_POSTGIS_CDN_URL__);
-} else {
-  pgliteMod  = await import("@electric-sql/pglite");
-  postgisMod = await import("@electric-sql/pglite-postgis");
-}
-const { PGlite } = pgliteMod;
-const { postgis } = postgisMod;
-```
+`pglite-workspace.ts` is left unchanged except for importing
+`loadPgliteModules()` from `./pglite-loader`. There is **no** `if` branch in the
+workspace code.
 
-`if (false) { ... }` is reliably tree-shaken by Rollup, so the bundled imports
-(and their assets) vanish from the embed build while staying intact everywhere
-else. A TypeScript ambient declaration (e.g. in a `*.d.ts`) declares the three
-`__PGLITE_*__` globals so the source typechecks.
+- `pglite-loader.ts` (default): dynamically imports the bundled
+  `@electric-sql/pglite` and `@electric-sql/pglite-postgis`.
+- `pglite-loader.cdn.ts` (embed only): dynamically imports the injected
+  `__PGLITE_CDN_URL__` / `__PGLITE_POSTGIS_CDN_URL__` jsDelivr URLs with
+  `/* @vite-ignore */` so Vite does not try to resolve/bundle them.
+
+The plugin swaps `pglite-loader` → `pglite-loader.cdn` only in embed mode, so the
+bundled imports (and their assets) vanish from the embed build while staying
+intact everywhere else. A TypeScript ambient declaration (in `vite-env.d.ts`)
+declares the two `__PGLITE_*_URL__` globals so the source typechecks.
 
 The CDN error path reuses the existing `getState()` behavior: on failure it
 resets `statePromise` so the load is retryable, and the dialog surfaces the
-error. The thrown message is adjusted to mention that the PostGIS engine is
-fetched from a CDN and needs network access, so a failure is diagnosable.
+error. The thrown message mentions that the PostGIS engine is fetched from a CDN
+and needs network access, so a failure is diagnosable.
 
 ### 4. Build guard
 
@@ -137,3 +143,11 @@ the dead-code-elimination ever stops working.
   Accepted per the chosen direction.
 - **Version drift.** CDN URLs are pinned from the installed package versions at
   build time, so they cannot diverge from the lockfile.
+- **No Subresource Integrity / tamper protection.** The URLs are version-pinned
+  but unhashed. Dynamic `import()` has no `integrity` option, so a compromised
+  jsDelivr or a tampered package version that reached the registry would be
+  served from the pinned URL with no integrity signal. A fetch-then-SHA-256-then-
+  `URL.createObjectURL` step could add verification, but at the cost of
+  complexity for an optional, opt-in feature in a non-sandboxed iframe with no
+  CSP. **Accepted risk** for CDN loading in the embed build; revisit if the embed
+  path ever handles untrusted data or gains a CSP.
