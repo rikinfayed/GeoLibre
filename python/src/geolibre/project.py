@@ -413,7 +413,9 @@ def wmts_layer(
 
     Args:
         name: Layer display name.
-        url: A WMTS tile URL template (``{z}/{y}/{x}``).
+        url: A WMTS tile URL template in WMTS REST ``{z}/{y}/{x}`` order (row
+            before column — unlike XYZ templates in ``tile_layer``/``add_tile_layer``,
+            which use ``{z}/{x}/{y}``).
         tile_size: Tile size in pixels.
         **style: Style overrides merged into the default layer style.
 

@@ -447,7 +447,7 @@ class Map(anywidget.AnyWidget):
         version: str = "2.0.0",
         output_format: str = "application/json",
         srs_name: str = "EPSG:4326",
-        max_features: int | None = None,
+        max_features: int | None = 1000,
         **style: Any,
     ) -> str:
         """Add a WFS layer.
@@ -462,7 +462,9 @@ class Map(anywidget.AnyWidget):
             version: WFS protocol version (e.g. ``"2.0.0"`` or ``"1.1.0"``).
             output_format: Requested output format (must yield GeoJSON).
             srs_name: Spatial reference of the response.
-            max_features: Optional cap on the number of returned features.
+            max_features: Cap on the number of returned features (defaults to
+                1000, matching the UI, since the response is inlined). Pass
+                ``None`` to request every feature.
             **style: Style overrides.
 
         Returns:
