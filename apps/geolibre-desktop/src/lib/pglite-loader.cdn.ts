@@ -41,13 +41,15 @@ export async function loadPgliteModules(): Promise<PgliteModules> {
     modules = { PGlite, postgis };
   } catch (err) {
     // The import itself failed: no network, jsDelivr unreachable, or a strict
-    // JupyterHub CSP blocking script-src cdn.jsdelivr.net. Name all three so the
-    // failure is diagnosable.
+    // JupyterHub CSP. PGlite also fetches its .wasm/.data companion files and
+    // compiles WASM, so a permissive CSP needs script-src, connect-src, and
+    // wasm-unsafe-eval — name all of it so the failure is diagnosable.
     throw new Error(
       "Could not load the PostGIS SQL engine from the CDN. The embedded " +
-        "GeoLibre app fetches PGlite from jsDelivr on first use, so this " +
-        "feature needs network access and a Content-Security-Policy that " +
-        "allows loading scripts from cdn.jsdelivr.net.",
+        "GeoLibre app fetches PGlite (and its WASM/data files) from jsDelivr " +
+        "on first use, so this feature needs network access and a " +
+        "Content-Security-Policy that allows script-src, connect-src, and " +
+        "wasm-unsafe-eval for cdn.jsdelivr.net.",
       { cause: err },
     );
   }

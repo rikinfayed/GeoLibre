@@ -34,7 +34,9 @@ const pgliteCdnRequire = createRequire(import.meta.url);
 // break the jsDelivr `import()` at runtime. Falls back to `dist/index.js`, the
 // historical PGlite layout, if neither is declared.
 function esmEntry(manifest: Record<string, unknown>): string {
-  if (typeof manifest.module === "string") return manifest.module;
+  // Prefer the `exports["."].import` condition (authoritative per the Node.js
+  // resolution spec and how Vite resolves), then the legacy bundler-hint
+  // `module` field, then the historical PGlite layout as a last resort.
   const exportsRoot = (manifest.exports as Record<string, unknown> | undefined)?.[
     "."
   ];
@@ -45,6 +47,7 @@ function esmEntry(manifest: Record<string, unknown>): string {
       ? importEntry
       : (importEntry as Record<string, unknown> | undefined)?.default;
   if (typeof importDefault === "string") return importDefault;
+  if (typeof manifest.module === "string") return manifest.module;
   return "dist/index.js";
 }
 // The PGlite packages do not expose "./package.json" via their `exports`, so
