@@ -97,17 +97,23 @@ export function SegmentationDialog({
   }, [open, checkStatus]);
 
   const pickImage = useCallback(async () => {
-    const result = await openLocalDataFileWithFallback({
-      filters: IMAGE_FILTERS,
-      accept: IMAGE_ACCEPT,
-      readBinary: true,
-    });
-    if (result?.data) {
-      setImageBytes(result.data);
-      const name = (result.path || "image.tif").split(/[/\\]/).pop();
-      setImageName(name || "image.tif");
+    try {
+      const result = await openLocalDataFileWithFallback({
+        filters: IMAGE_FILTERS,
+        accept: IMAGE_ACCEPT,
+        readBinary: true,
+      });
+      if (result?.data) {
+        setImageBytes(result.data);
+        const name = (result.path || "image.tif").split(/[/\\]/).pop();
+        setImageName(name || "image.tif");
+      }
+    } catch (err) {
+      // The picker can reject (e.g. a denied Tauri permission); surface it
+      // instead of leaving an unhandled rejection.
+      setError(err instanceof Error ? err.message : t("segmentation.error.openFile"));
     }
-  }, []);
+  }, [t]);
 
   const startServer = useCallback(async () => {
     setStartingServer(true);

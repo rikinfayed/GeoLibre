@@ -601,6 +601,7 @@
     "error": {
       "chooseImage": "Choose an image (GeoTIFF) to segment.",
       "enterPrompt": "Enter a text prompt, e.g. “trees” or “buildings”.",
+      "openFile": "Could not open the selected file.",
       "sidecarUnreachable": "Could not reach the GeoLibre sidecar.",
       "startServer": "Could not start GeoLibre sidecar.",
       "failed": "Segmentation failed."
