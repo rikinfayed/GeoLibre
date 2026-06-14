@@ -947,11 +947,13 @@ export function SettingsDialog({
                           <p className="text-xs text-muted-foreground">
                             {provider.requiresApiKey
                               ? t("settings.geocoding.requiresKey")
-                              : t("settings.geocoding.noKey")}
+                              : provider.acceptsApiKey
+                                ? t("settings.geocoding.optionalKey")
+                                : t("settings.geocoding.noKey")}
                           </p>
                         </div>
 
-                        {provider.requiresApiKey ? (
+                        {provider.acceptsApiKey ? (
                           <div className="space-y-1.5">
                             <Label className="text-xs" htmlFor="geocoding-key">
                               {t("settings.geocoding.apiKey")}

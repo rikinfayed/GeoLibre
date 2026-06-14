@@ -112,8 +112,17 @@ export interface GeocodingProvider {
   forward: boolean;
   /** Whether reverse (point -> address) geocoding is supported. */
   reverse: boolean;
-  /** Whether the provider accepts an API key / access token. */
+  /**
+   * Whether the provider's default configuration cannot work without an API
+   * key / access token. Drives the "missing key" warning and disables the run.
+   */
   requiresApiKey: boolean;
+  /**
+   * Whether the provider can use an API key at all, so the Settings UI shows a
+   * key field. True for every keyed provider plus Pelias (the hosted
+   * geocode.earth endpoint needs a key, a self-hosted instance does not).
+   */
+  acceptsApiKey: boolean;
   /** Default forward endpoint used when the project does not override it. */
   defaultForwardEndpoint: string;
   /** Default reverse endpoint used when the project does not override it. */
@@ -181,6 +190,20 @@ function uniqueKey(base: string, existing: Record<string, unknown>): string {
   let suffix = 2;
   while (`${base}_${suffix}` in existing) suffix += 1;
   return `${base}_${suffix}`;
+}
+
+/**
+ * Coerce an address-parts record to `Record<string, string>`. Provider address
+ * objects can carry numbers (ArcGIS `Score`/`X`/`Y`, Pelias coordinates), so
+ * values are stringified rather than unsafely cast; null/undefined are dropped.
+ */
+function stringifyParts(obj: Record<string, unknown>): Record<string, string> {
+  const parts: Record<string, string> = {};
+  for (const [key, value] of Object.entries(obj)) {
+    if (value === null || value === undefined) continue;
+    parts[key] = typeof value === "string" ? value : String(value);
+  }
+  return parts;
 }
 
 /** Read a string property off an unknown object, or undefined. */
@@ -307,6 +330,7 @@ const nominatimProvider: GeocodingProvider = {
   forward: true,
   reverse: true,
   requiresApiKey: false,
+  acceptsApiKey: false,
   defaultForwardEndpoint: DEFAULT_FORWARD_GEOCODE_ENDPOINT,
   defaultReverseEndpoint: DEFAULT_REVERSE_GEOCODE_ENDPOINT,
   buildForwardUrl: (config, query, options) =>
@@ -358,7 +382,10 @@ const peliasProvider: GeocodingProvider = {
   label: "Pelias",
   forward: true,
   reverse: true,
+  // The default endpoint is hosted geocode.earth (key required), but a
+  // self-hosted Pelias needs none, so the key is accepted yet not mandatory.
   requiresApiKey: false,
+  acceptsApiKey: true,
   defaultForwardEndpoint: "https://api.geocode.earth/v1/search",
   defaultReverseEndpoint: "https://api.geocode.earth/v1/reverse",
   buildForwardUrl: (config, query, options) => {
@@ -394,7 +421,7 @@ const peliasProvider: GeocodingProvider = {
     if (!feature) return null;
     const props = (feature.properties as Record<string, unknown>) ?? {};
     const displayName = readString(props, "label")?.trim();
-    return displayName ? { displayName, parts: props as Record<string, string> } : null;
+    return displayName ? { displayName, parts: stringifyParts(props) } : null;
   },
 };
 
@@ -404,6 +431,7 @@ const arcgisProvider: GeocodingProvider = {
   forward: true,
   reverse: true,
   requiresApiKey: true,
+  acceptsApiKey: true,
   defaultForwardEndpoint:
     "https://geocode.arcgis.com/arcgis/rest/services/World/GeocodeServer/findAddressCandidates",
   defaultReverseEndpoint:
@@ -452,7 +480,7 @@ const arcgisProvider: GeocodingProvider = {
       readString(address, "LongLabel") ?? readString(address, "Match_addr")
     )?.trim();
     return displayName
-      ? { displayName, parts: address as Record<string, string> }
+      ? { displayName, parts: stringifyParts(address as Record<string, unknown>) }
       : null;
   },
 };
@@ -463,6 +491,7 @@ const mapboxProvider: GeocodingProvider = {
   forward: true,
   reverse: true,
   requiresApiKey: true,
+  acceptsApiKey: true,
   defaultForwardEndpoint: "https://api.mapbox.com/geocoding/v5/mapbox.places",
   defaultReverseEndpoint: "https://api.mapbox.com/geocoding/v5/mapbox.places",
   buildForwardUrl: (config, query, options) => {
@@ -503,10 +532,31 @@ const mapboxProvider: GeocodingProvider = {
     if (!feature) return null;
     const displayName = readString(feature, "place_name")?.trim();
     return displayName
-      ? { displayName, parts: (feature.properties as Record<string, string>) ?? {} }
+      ? {
+          displayName,
+          parts: stringifyParts(
+            (feature.properties as Record<string, unknown>) ?? {},
+          ),
+        }
       : null;
   },
 };
+
+/**
+ * Detect a Google Geocoding API error embedded in an HTTP 200 body. Google v3
+ * returns REQUEST_DENIED / OVER_QUERY_LIMIT / INVALID_REQUEST and friends with
+ * a 200 status and the failure only in the `status` field, so `response.ok`
+ * alone would silently turn those into empty results. Returns null for OK and
+ * ZERO_RESULTS (a successful empty match).
+ */
+function googleErrorMessage(data: unknown): string | null {
+  const status = readString(data, "status");
+  if (!status || status === "OK" || status === "ZERO_RESULTS") return null;
+  const detail = readString(data, "error_message");
+  return detail
+    ? `Google geocoder error: ${status} - ${detail}`
+    : `Google geocoder error: ${status}`;
+}
 
 const googleProvider: GeocodingProvider = {
   id: "google",
@@ -514,15 +564,22 @@ const googleProvider: GeocodingProvider = {
   forward: true,
   reverse: true,
   requiresApiKey: true,
+  acceptsApiKey: true,
   defaultForwardEndpoint: "https://maps.googleapis.com/maps/api/geocode/json",
   defaultReverseEndpoint: "https://maps.googleapis.com/maps/api/geocode/json",
+  // The Geocoding API has no result-count parameter, so the batch loop's
+  // `limit` is intentionally not forwarded; only the top result is used.
   buildForwardUrl: (config, query) => {
     const url = new URL(config.forwardEndpoint);
     url.searchParams.set("address", query);
     if (config.apiKey) url.searchParams.set("key", config.apiKey);
     return url.toString();
   },
-  parseForward: (data) => parseGoogleResults(data),
+  parseForward: (data) => {
+    const error = googleErrorMessage(data);
+    if (error) throw new Error(error);
+    return parseGoogleResults(data);
+  },
   buildReverseUrl: (config, lon, lat) => {
     const url = new URL(config.reverseEndpoint);
     url.searchParams.set("latlng", `${lat},${lon}`);
@@ -530,6 +587,8 @@ const googleProvider: GeocodingProvider = {
     return url.toString();
   },
   parseReverse: (data) => {
+    const error = googleErrorMessage(data);
+    if (error) throw new Error(error);
     const results =
       data && typeof data === "object" && Array.isArray((data as { results?: unknown }).results)
         ? ((data as { results: unknown[] }).results as Record<string, unknown>[])

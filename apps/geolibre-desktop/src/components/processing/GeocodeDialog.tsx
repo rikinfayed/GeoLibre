@@ -6,6 +6,7 @@ import {
   GEOCODING_PROVIDERS,
   getGeocodingProvider,
   nextDelayMs,
+  normalizeGeocodingProviderId,
   resolveGeocoderConfig,
   rowCap,
   useAppStore,
@@ -106,8 +107,8 @@ export function GeocodeDialog({
 
   const [csv, setCsv] = useState<ParsedCsv | null>(null);
   const [addressColumn, setAddressColumn] = useState<string>("");
-  const [providerId, setProviderId] = useState<string>(
-    geocodingPrefs.providerId,
+  const [providerId, setProviderId] = useState<string>(() =>
+    normalizeGeocodingProviderId(geocodingPrefs.providerId),
   );
   const [log, setLog] = useState<string[]>([]);
   const [running, setRunning] = useState(false);
@@ -115,11 +116,14 @@ export function GeocodeDialog({
   const abortRef = useRef<AbortController | null>(null);
   const logEndRef = useRef<HTMLDivElement>(null);
 
-  // Default the run to the configured provider, but follow a settings change
-  // while the dialog is open and idle.
+  // Default the run to the configured provider: reset on open (so a prior
+  // one-off choice does not persist into the next session) and follow a
+  // settings change while the dialog is open and idle.
   useEffect(() => {
-    if (!running) setProviderId(geocodingPrefs.providerId);
-  }, [geocodingPrefs.providerId, running]);
+    if (open && !running) {
+      setProviderId(normalizeGeocodingProviderId(geocodingPrefs.providerId));
+    }
+  }, [open, geocodingPrefs.providerId, running]);
 
   const config = useMemo(
     () => resolveGeocoderConfig({ ...geocodingPrefs, providerId }),
@@ -381,7 +385,7 @@ export function GeocodeDialog({
           <div className="flex gap-2">
             <Button
               onClick={handleRun}
-              disabled={running || !csv || !addressColumn}
+              disabled={running || !csv || !addressColumn || missingApiKey}
               className="gap-2"
             >
               {running ? (

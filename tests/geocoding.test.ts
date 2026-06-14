@@ -301,10 +301,15 @@ describe("ArcGIS provider", () => {
     );
   });
 
-  it("parses a reverse address from LongLabel", () => {
+  it("parses a reverse address from LongLabel and stringifies numeric parts", () => {
     assert.deepEqual(
-      provider.parseReverse({ address: { LongLabel: "1 Infinite Loop" } }),
-      { displayName: "1 Infinite Loop", parts: { LongLabel: "1 Infinite Loop" } },
+      provider.parseReverse({
+        address: { LongLabel: "1 Infinite Loop", Score: 100 },
+      }),
+      {
+        displayName: "1 Infinite Loop",
+        parts: { LongLabel: "1 Infinite Loop", Score: "100" },
+      },
     );
     assert.equal(provider.parseReverse({}), null);
   });
@@ -359,6 +364,7 @@ describe("Google provider", () => {
 
   it("parses results from geometry.location and formatted_address", () => {
     const matches = provider.parseForward({
+      status: "OK",
       results: [
         {
           formatted_address: "Berlin, Germany",
@@ -376,6 +382,37 @@ describe("Google provider", () => {
       }),
       { displayName: "Berlin, Germany", parts: {} },
     );
+  });
+
+  it("throws on an error status returned with HTTP 200, but not ZERO_RESULTS", () => {
+    assert.throws(
+      () =>
+        provider.parseForward({
+          status: "REQUEST_DENIED",
+          error_message: "The provided API key is invalid.",
+        }),
+      /REQUEST_DENIED/,
+    );
+    assert.deepEqual(provider.parseForward({ status: "ZERO_RESULTS", results: [] }), []);
+  });
+});
+
+describe("provider key requirements", () => {
+  it("flags keyed providers as requiring a key", () => {
+    for (const id of ["arcgis", "mapbox", "google"] as const) {
+      const provider = getGeocodingProvider(id);
+      assert.equal(provider.requiresApiKey, true);
+      assert.equal(provider.acceptsApiKey, true);
+    }
+  });
+
+  it("treats Pelias as optionally keyed and Nominatim as keyless", () => {
+    const pelias = getGeocodingProvider("pelias");
+    assert.equal(pelias.requiresApiKey, false);
+    assert.equal(pelias.acceptsApiKey, true);
+    const nominatim = getGeocodingProvider("nominatim");
+    assert.equal(nominatim.requiresApiKey, false);
+    assert.equal(nominatim.acceptsApiKey, false);
   });
 });
 

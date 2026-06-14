@@ -403,24 +403,32 @@ function normalizeGeocodingPreferences(
   const apiKeys: Record<string, string> = {};
   if (candidate.apiKeys && typeof candidate.apiKeys === "object") {
     for (const [key, value] of Object.entries(candidate.apiKeys)) {
-      if (typeof value === "string") apiKeys[key] = value;
+      const normalizedKey = key.trim();
+      if (normalizedKey && typeof value === "string") {
+        apiKeys[normalizedKey] = value;
+      }
     }
   }
   return {
     providerId:
       typeof candidate.providerId === "string" && candidate.providerId.trim()
-        ? candidate.providerId
+        ? candidate.providerId.trim()
         : DEFAULT_PROJECT_PREFERENCES.geocoding.providerId,
     apiKeys,
     forwardEndpoint:
-      typeof candidate.forwardEndpoint === "string"
-        ? candidate.forwardEndpoint
+      typeof candidate.forwardEndpoint === "string" &&
+      candidate.forwardEndpoint.trim()
+        ? candidate.forwardEndpoint.trim()
         : undefined,
     reverseEndpoint:
-      typeof candidate.reverseEndpoint === "string"
-        ? candidate.reverseEndpoint
+      typeof candidate.reverseEndpoint === "string" &&
+      candidate.reverseEndpoint.trim()
+        ? candidate.reverseEndpoint.trim()
         : undefined,
-    email: typeof candidate.email === "string" ? candidate.email : undefined,
+    email:
+      typeof candidate.email === "string" && candidate.email.trim()
+        ? candidate.email.trim()
+        : undefined,
   };
 }
 
