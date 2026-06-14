@@ -772,6 +772,12 @@ fn start_geolibre_sidecar_blocking(app: tauri::AppHandle) -> Result<SidecarServe
         .arg("run")
         .arg("--project")
         .arg(&project_dir)
+        // The AI segmentation `/ml` endpoints proxy to samgeo-api from inside
+        // this main sidecar process and need `httpx`, which lives in the `ml`
+        // extra. Unlike whitebox/conversion (separate managed venvs), ml has no
+        // lazy bootstrap, so the extra must be synced into the sidecar env here.
+        .arg("--extra")
+        .arg("ml")
         .arg("uvicorn")
         .arg("geolibre_server.app.main:app")
         .arg("--host")

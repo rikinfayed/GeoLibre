@@ -141,7 +141,11 @@ pip install -e ".[ml]"
 ```
 
 `samgeo-api` is launched on demand when it is on the `PATH`, otherwise the proxy
-returns `available: false` with an actionable message. Configuration:
+returns `available: false` with an actionable message. The desktop app runs the
+sidecar in a managed (uv) environment that includes the `ml` extra but not
+`segment-geospatial`, so `samgeo-api` is not on its `PATH`; launch the desktop
+app with `GEOLIBRE_ML_SAMGEO_URL` set to an external `samgeo-api` (the spawned
+sidecar inherits the app's environment). Configuration:
 
 | Variable | Purpose |
 |----------|---------|

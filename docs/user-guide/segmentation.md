@@ -49,6 +49,27 @@ Then either let GeoLibre launch the model server for you, or run it yourself:
     GEOLIBRE_ML_SAMGEO_URL=http://127.0.0.1:8000
     ```
 
+!!! note "Desktop app: point it at an external `samgeo-api`"
+
+    The desktop app runs its sidecar in a managed (uv) environment that ships
+    the `ml` extra but **not** the heavy `segment-geospatial` model stack, so
+    `samgeo-api` is not on its `PATH` and auto-launch does not apply. Install
+    `segment-geospatial[api,samgeo3]` in a PyTorch-capable environment, start
+    `samgeo-api` there, and launch the desktop app from a shell that exports
+    `GEOLIBRE_ML_SAMGEO_URL` so the sidecar proxies to it:
+
+    ```bash
+    # in your PyTorch env
+    samgeo-api --port 8000
+
+    # launch the desktop app with the proxy target set
+    GEOLIBRE_ML_SAMGEO_URL=http://127.0.0.1:8000 npm run tauri:dev
+    ```
+
+    The Tauri process passes its environment to the sidecar it spawns. Without
+    `GEOLIBRE_ML_SAMGEO_URL`, the sidecar has no model backend and `/ml/status`
+    reports the segmentation backend as unavailable.
+
 Install the sidecar's optional `ml` extra (just an HTTP client — the models live
 in `samgeo-api`):
 
