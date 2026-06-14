@@ -589,6 +589,113 @@ export async function runVectorTool(
   return (await res.json()) as VectorToolResult;
 }
 
+// --- AI segmentation (SamGeo / SAM3) ---------------------------------------
+
+export interface MlStatus {
+  available: boolean;
+  message: string;
+  /** Model the UI should default to (e.g. "sam3"). */
+  default_model?: string;
+  /** Base URL of the resolved samgeo-api server, when one is running. */
+  url?: string;
+  /** samgeo-api version, when a server is reachable. */
+  version?: string;
+  /** Available models per version, when a server is reachable. */
+  models?: Record<string, string[]>;
+}
+
+export type MlSegmentMode = "automatic" | "predict" | "text";
+
+export interface MlSegmentParams {
+  /** Model version to use. Defaults to "sam3" (the only supported model). */
+  modelVersion?: string;
+  /** Output format. Defaults to "geojson". */
+  outputFormat?: string;
+  /** Minimum mask size in pixels. */
+  minSize?: number;
+  /** Maximum mask size in pixels. */
+  maxSize?: number;
+  // text mode
+  prompt?: string;
+  confidenceThreshold?: number;
+  // predict mode
+  pointCoords?: number[][];
+  pointLabels?: number[];
+  boxes?: number[][];
+  /** CRS of the point/box prompts (e.g. "EPSG:4326" for map-drawn geometry). */
+  pointCrs?: string;
+}
+
+/** Return segmentation backend (samgeo-api) availability. */
+export async function fetchMlStatus(
+  baseUrl = DEFAULT_SIDECAR_URL,
+): Promise<MlStatus> {
+  let res: Response;
+  try {
+    res = await fetch(`${baseUrl}/ml/status`);
+  } catch (error) {
+    throw sidecarConnectionError(baseUrl, error);
+  }
+  if (!res.ok) {
+    throw new Error(`Segmentation status failed: HTTP ${res.status}`);
+  }
+  return (await res.json()) as MlStatus;
+}
+
+/**
+ * Run a segmentation request against the sidecar `/ml/segment/*` proxy.
+ *
+ * Uploads the image as multipart/form-data alongside the prompt/params and
+ * returns the resulting GeoJSON FeatureCollection (georeferenced when the input
+ * is a GeoTIFF). The image is a `Blob`/`File`; callers obtain it by reading a
+ * local GeoTIFF or fetching a COG URL into bytes.
+ */
+export async function mlSegment(
+  mode: MlSegmentMode,
+  image: Blob,
+  filename: string,
+  params: MlSegmentParams = {},
+  baseUrl = DEFAULT_SIDECAR_URL,
+): Promise<FeatureCollection> {
+  const form = new FormData();
+  form.append("file", image, filename);
+  form.append("model_version", params.modelVersion ?? "sam3");
+  form.append("output_format", params.outputFormat ?? "geojson");
+  if (params.minSize != null) form.append("min_size", String(params.minSize));
+  if (params.maxSize != null) form.append("max_size", String(params.maxSize));
+
+  if (mode === "text") {
+    form.append("prompt", params.prompt ?? "");
+    if (params.confidenceThreshold != null) {
+      form.append("confidence_threshold", String(params.confidenceThreshold));
+    }
+  }
+  if (mode === "predict") {
+    if (params.pointCoords) {
+      form.append("point_coords", JSON.stringify(params.pointCoords));
+    }
+    if (params.pointLabels) {
+      form.append("point_labels", JSON.stringify(params.pointLabels));
+    }
+    if (params.boxes) form.append("boxes", JSON.stringify(params.boxes));
+    if (params.pointCrs) form.append("point_crs", params.pointCrs);
+  }
+
+  let res: Response;
+  try {
+    res = await fetch(`${baseUrl}/ml/segment/${mode}`, {
+      method: "POST",
+      body: form,
+    });
+  } catch (error) {
+    throw sidecarConnectionError(baseUrl, error);
+  }
+  if (!res.ok) {
+    throw new Error(await responseErrorMessage(res, "Could not run segmentation"));
+  }
+  return (await res.json()) as FeatureCollection;
+}
+
 async function responseErrorMessage(
   response: Response,
   fallback: string,

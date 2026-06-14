@@ -413,6 +413,7 @@ export function TopToolbar({
   const setNetworkToolOpen = useAppStore((s) => s.setNetworkToolOpen);
   const setGeocodeOpen = useAppStore((s) => s.setGeocodeOpen);
   const setRasterToolOpen = useAppStore((s) => s.setRasterToolOpen);
+  const setSegmentationOpen = useAppStore((s) => s.setSegmentationOpen);
   const setSqlWorkspaceOpen = useAppStore((s) => s.setSqlWorkspaceOpen);
   const setPythonConsoleOpen = useAppStore((s) => s.setPythonConsoleOpen);
   const setAssistantOpen = useAppStore((s) => s.setAssistantOpen);
@@ -2115,6 +2116,9 @@ export function TopToolbar({
               </DropdownMenuItem>
             </DropdownMenuSubContent>
           </DropdownMenuSub>
+          <DropdownMenuItem onSelect={() => setSegmentationOpen(true)}>
+            {t("toolbar.command.segmentation")}
+          </DropdownMenuItem>
           <DropdownMenuItem onSelect={handleOpenPlanetaryComputerPanel}>
             {t("toolbar.command.planetaryComputer")}
           </DropdownMenuItem>

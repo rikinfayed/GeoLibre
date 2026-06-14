@@ -162,6 +162,19 @@ const RasterToolsDialog = lazy(() =>
     }),
 );
 
+const SegmentationDialog = lazy(() =>
+  import("../processing/SegmentationDialog")
+    .then((module) => ({
+      default: module.SegmentationDialog,
+    }))
+    .catch((error) => {
+      console.error("Failed to load SegmentationDialog", error);
+      const Fallback = (() =>
+        null) as unknown as typeof import("../processing/SegmentationDialog").SegmentationDialog;
+      return { default: Fallback };
+    }),
+);
+
 const SqlWorkspaceDialog = lazy(() =>
   import("../processing/SqlWorkspaceDialog")
     .then((module) => ({
@@ -1057,6 +1070,9 @@ export function DesktopShell({
       </Suspense>
       <Suspense fallback={null}>
         <RasterToolsDialog />
+      </Suspense>
+      <Suspense fallback={null}>
+        <SegmentationDialog mapControllerRef={mapControllerRef} />
       </Suspense>
       <Suspense fallback={null}>
         <SqlWorkspaceDialog />

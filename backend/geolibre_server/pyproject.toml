@@ -36,6 +36,13 @@ raster = [
   "numpy>=1.24",
   "contourpy>=1.2.0",
 ]
+# AI segmentation toolbox (SamGeo / SAM3). The sidecar only proxies to a
+# separate `samgeo-api` server, so it just needs an HTTP client here; the heavy
+# model stack (segment-geospatial[api,samgeo3] + Torch) is installed and run
+# separately (its own GPU env or launched on demand). See app/ml.py.
+ml = [
+  "httpx>=0.27",
+]
 # Future geospatial stack (not required for MVP UI):
 # geo = [
 #   "gdal",

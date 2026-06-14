@@ -21,6 +21,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
 from .conversion import router as conversion_router
+from .ml import router as ml_router
+from .ml import stop_child_server
 from .raster import router as raster_router
 from .vector import router as vector_router
 from .whitebox import router as whitebox_router
@@ -43,6 +45,7 @@ app.include_router(whitebox_router)
 app.include_router(conversion_router)
 app.include_router(raster_router)
 app.include_router(vector_router)
+app.include_router(ml_router)
 
 
 class RunRequest(BaseModel):
@@ -58,6 +61,9 @@ def health():
 @app.post("/shutdown")
 def shutdown():
     """Request graceful shutdown of the local sidecar process."""
+    # Stop the launched samgeo-api child (if any) so the heavy model server
+    # does not outlive this sidecar.
+    stop_child_server()
     threading.Thread(target=_terminate_current_process, daemon=True).start()
     return {"status": "shutting_down"}
 

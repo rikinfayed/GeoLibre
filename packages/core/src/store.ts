@@ -132,6 +132,7 @@ export interface AppState {
     vectorToolOpen: VectorToolKind | null;
     networkToolOpen: NetworkToolKind | null;
     rasterToolOpen: RasterToolKind | null;
+    segmentationOpen: boolean;
     geocodeOpen: boolean;
     sqlWorkspaceOpen: boolean;
     pythonConsoleOpen: boolean;
@@ -168,6 +169,7 @@ export interface AppState {
   setVectorToolOpen: (kind: VectorToolKind | null) => void;
   setNetworkToolOpen: (kind: NetworkToolKind | null) => void;
   setRasterToolOpen: (kind: RasterToolKind | null) => void;
+  setSegmentationOpen: (open: boolean) => void;
   setGeocodeOpen: (open: boolean) => void;
   setSqlWorkspaceOpen: (open: boolean) => void;
   setPythonConsoleOpen: (open: boolean) => void;
@@ -356,6 +358,7 @@ export const useAppStore = create<AppState>()(
         vectorToolOpen: null,
         networkToolOpen: null,
         rasterToolOpen: null,
+        segmentationOpen: false,
         geocodeOpen: false,
         sqlWorkspaceOpen: false,
         pythonConsoleOpen: false,
@@ -418,6 +421,8 @@ export const useAppStore = create<AppState>()(
         set((s) => ({ ui: { ...s.ui, networkToolOpen: kind } })),
       setRasterToolOpen: (kind) =>
         set((s) => ({ ui: { ...s.ui, rasterToolOpen: kind } })),
+      setSegmentationOpen: (open) =>
+        set((s) => ({ ui: { ...s.ui, segmentationOpen: open } })),
       setGeocodeOpen: (open) =>
         set((s) => ({ ui: { ...s.ui, geocodeOpen: open } })),
       setSqlWorkspaceOpen: (open) =>
