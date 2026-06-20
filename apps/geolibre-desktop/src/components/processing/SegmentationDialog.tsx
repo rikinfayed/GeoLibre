@@ -38,6 +38,11 @@ import { useTranslation } from "react-i18next";
 import { isTauri, openLocalDataFileWithFallback } from "../../lib/tauri-io";
 import { reprojectFeatureCollectionToWgs84 } from "../../lib/duckdb-vector-loader";
 import { startGeoLibreSidecar } from "../../lib/sidecar";
+import {
+  SidecarHelpBanner,
+  SIDECAR_PORT,
+  SIDECAR_URL,
+} from "./SidecarHelpBanner";
 
 interface SegmentationDialogProps {
   mapControllerRef: React.RefObject<MapController | null>;
@@ -74,6 +79,10 @@ export function SegmentationDialog({
   const [checking, setChecking] = useState(false);
   const [running, setRunning] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // A failed "Start server" attempt is tracked separately from validation/run
+  // errors so it can surface as the interactive troubleshooting banner instead
+  // of a dead-end static error line (issue #594).
+  const [serverError, setServerError] = useState<string | null>(null);
   const [resultMessage, setResultMessage] = useState<string | null>(null);
   const [startingServer, setStartingServer] = useState(false);
 
@@ -119,6 +128,7 @@ export function SegmentationDialog({
     // Reset transient state so a re-opened dialog never shows a stale error,
     // result, or a `running` spinner left over from a previous session.
     setError(null);
+    setServerError(null);
     setResultMessage(null);
     setRunning(false);
     setImageBytes(null);
@@ -142,11 +152,14 @@ export function SegmentationDialog({
   const startServer = useCallback(async () => {
     setStartingServer(true);
     setError(null);
+    setServerError(null);
     try {
       await startGeoLibreSidecar();
       await checkStatus();
     } catch (err) {
-      setError(
+      // Route the failure into serverError so the bottom of the dialog renders
+      // the interactive troubleshooting banner rather than a static error line.
+      setServerError(
         err instanceof Error
           ? err.message
           : t("segmentation.error.startServer"),
@@ -158,6 +171,9 @@ export function SegmentationDialog({
 
   const handleRun = useCallback(async () => {
     setError(null);
+    // Defensive: serverError is normally null by the time Segment is enabled;
+    // clearing it keeps the success path from coexisting with a stale banner.
+    setServerError(null);
     setResultMessage(null);
     if (!imageBytes) {
       setError(t("segmentation.error.chooseImage"));
@@ -366,13 +382,44 @@ export function SegmentationDialog({
             </Button>
           </div>
 
-          {error && (
-            <p className="flex items-center gap-2 text-sm text-destructive">
-              <AlertCircle className="h-4 w-4" />
-              {error}
-            </p>
+          {/* A failed "Start server" attempt becomes an interactive
+              troubleshooting banner (issue #594). Segmentation has no WASM
+              fallback, so the banner omits the "Run locally" switch and uses
+              segmentation-specific copy (no Whitebox/WASM mentions). Validation
+              and run errors keep the plain static line. */}
+          {serverError ? (
+            <SidecarHelpBanner
+              isDesktop={isTauri()}
+              error={serverError}
+              title={t("segmentation.sidecar.title")}
+              intro={t("segmentation.sidecar.intro", {
+                sidecarUrl: SIDECAR_URL,
+              })}
+              troubleshootingTitle={t(
+                "segmentation.sidecar.troubleshootingTitle",
+              )}
+              // The banner only renders after a failed "Start server", which is
+              // desktop-only, so the start step is always the desktop one.
+              // Install first: a missing segment-geospatial backend is the most
+              // likely reason it failed, so leading with it (rather than
+              // re-clicking Start, which would fail the same way) keeps the path
+              // self-consistent.
+              steps={[
+                t("segmentation.sidecar.stepInstall"),
+                t("segmentation.sidecar.stepStartServerDesktop"),
+                t("processing.sidecar.stepCheckPort", { port: SIDECAR_PORT }),
+                t("processing.sidecar.stepRestart"),
+              ]}
+            />
+          ) : (
+            error && (
+              <p className="flex items-center gap-2 text-sm text-destructive">
+                <AlertCircle className="h-4 w-4" />
+                {error}
+              </p>
+            )
           )}
-          {resultMessage && !error && (
+          {resultMessage && !error && !serverError && (
             <p className="flex items-center gap-2 text-sm text-emerald-700">
               <CheckCircle2 className="h-4 w-4" />
               {resultMessage}
