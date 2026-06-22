@@ -398,10 +398,13 @@ export function ProcessingDialog({
   const [loadingTools, setLoadingTools] = useState(false);
   const [runtimeMessage, setRuntimeMessage] = useState("");
   const [runtimeAvailable, setRuntimeAvailable] = useState<boolean | null>(null);
+  // Cache the desktop check once, matching the sibling processing dialogs
+  // (ConversionDialog, RasterToolsDialog).
+  const desktop = isTauri();
   // Run tools locally in WebAssembly (no Python sidecar). Default on in the
   // browser, where there is no sidecar; off under Tauri, where the sidecar is
   // available and can read native file paths that the WASM runner cannot fetch.
-  const [runLocal, setRunLocal] = useState(!isTauri());
+  const [runLocal, setRunLocal] = useState(!desktop);
   const [error, setError] = useState<string | null>(null);
   const [startingServer, setStartingServer] = useState(false);
   const [stoppingServer, setStoppingServer] = useState(false);
@@ -913,7 +916,11 @@ export function ProcessingDialog({
               </Button>
             </div>
 
-            {runtimeAvailable !== true && (
+            {/* The processing server is a local Python process that only the
+                desktop app can spawn or stop. In the browser these buttons
+                would always fail, and a same-origin sidecar (when deployed) is
+                auto-detected without them, so gate both on the desktop build. */}
+            {desktop && runtimeAvailable !== true && (
               <Button
                 type="button"
                 variant="outline"
@@ -929,7 +936,7 @@ export function ProcessingDialog({
               </Button>
             )}
 
-            {runtimeAvailable === true && (
+            {desktop && runtimeAvailable === true && (
               <Button
                 type="button"
                 variant="outline"
@@ -1103,7 +1110,7 @@ export function ProcessingDialog({
                   tool-run error that has nothing to do with the sidecar). */}
               {!runLocal && runtimeAvailable === false ? (
                 <SidecarHelpBanner
-                  isDesktop={isTauri()}
+                  isDesktop={desktop}
                   error={error}
                   onRunLocally={() => {
                     // Clear the stale sidecar error in the same batch as the
