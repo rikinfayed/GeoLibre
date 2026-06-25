@@ -119,6 +119,8 @@ function getSwipeControlOptions(
     selectVisibleByDefault: previousState === undefined,
     basemapStyle: app.getActiveBasemap(),
     excludeLayers: ["gl-draw-*", "measure-*", "geolibre-highlight-*"],
+    // List only currently visible layers (plus any already selected), kept in sync live (#843).
+    visibleLayersOnly: true,
   };
 }
 
