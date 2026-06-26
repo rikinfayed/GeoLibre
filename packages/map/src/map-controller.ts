@@ -857,6 +857,120 @@ export class MapController {
   }
 
   /**
+   * Drop a draggable pin at `lngLat` so the user can fine-tune the position of a
+   * feature that was just placed without coordinates of its own (e.g. a
+   * non-geotagged photo dropped at the map center). Every drag reports the new
+   * position through `onMove`; clicking the pin's "Done" button (label supplied
+   * by the caller so it stays translatable) removes the pin and runs `onDone`.
+   *
+   * The pin and its hint popup live outside the React tree, so the interaction
+   * survives the dialog that started it being closed. Returns a disposer that
+   * removes the pin early (e.g. if the caller needs to abort).
+   *
+   * @param lngLat - Where to drop the pin, as `[lng, lat]`.
+   * @param options - Translated labels plus the move/done callbacks.
+   * @returns A function that removes the pin and its popup.
+   */
+  startManualPlacement(
+    lngLat: [number, number],
+    options: {
+      /** Instruction shown in the pin's popup while it is draggable. */
+      hint: string;
+      /** Label for the button that finishes placement. */
+      doneLabel: string;
+      /** Called with `[lng, lat]` on every drag of the pin. */
+      onMove: (lngLat: [number, number]) => void;
+      /** Called once when the user clicks the "Done" button. */
+      onDone?: () => void;
+    },
+  ): () => void {
+    const map = this.map;
+    if (!map) return () => {};
+
+    const marker = new maplibregl.Marker({ draggable: true, color: "#ef4444" })
+      .setLngLat(lngLat)
+      .addTo(map);
+
+    const container = document.createElement("div");
+    container.className = "geolibre-placement-popup";
+    const hintText = document.createElement("p");
+    hintText.className = "geolibre-placement-popup-hint";
+    hintText.textContent = options.hint;
+    const doneButton = document.createElement("button");
+    doneButton.type = "button";
+    doneButton.className = "geolibre-placement-popup-done";
+    doneButton.textContent = options.doneLabel;
+    container.append(hintText, doneButton);
+
+    const popup = new maplibregl.Popup({
+      closeButton: false,
+      closeOnClick: false,
+      offset: 28,
+      className: "geolibre-placement-popup-root",
+    })
+      .setLngLat(lngLat)
+      .setDOMContent(container)
+      .addTo(map);
+
+    let disposed = false;
+    // The `drag` event fires once per pointer-move frame (60-120 Hz), and each
+    // call rewrites the store and re-syncs the source. Coalesce to one update
+    // per animation frame so a heavier `onMove` cannot stutter the drag.
+    let rafPending = false;
+    let dragRaf: number | null = null;
+    const cancelPendingFrame = () => {
+      if (dragRaf !== null) {
+        cancelAnimationFrame(dragRaf);
+        dragRaf = null;
+      }
+      rafPending = false;
+    };
+    const commit = () => {
+      const next = marker.getLngLat();
+      popup.setLngLat(next);
+      options.onMove([next.lng, next.lat]);
+    };
+    const handleDrag = () => {
+      if (rafPending) return;
+      rafPending = true;
+      dragRaf = requestAnimationFrame(() => {
+        dragRaf = null;
+        rafPending = false;
+        if (disposed) return;
+        commit();
+      });
+    };
+    // The final `drag` may still be sitting in a pending frame when the user
+    // releases and clicks Done; commit the release position synchronously so the
+    // photo never lands one frame stale, dropping the queued frame so it does
+    // not fire a second, identical update.
+    const handleDragEnd = () => {
+      if (disposed) return;
+      cancelPendingFrame();
+      commit();
+    };
+    const dispose = () => {
+      if (disposed) return;
+      disposed = true;
+      cancelPendingFrame();
+      marker.off("drag", handleDrag);
+      marker.off("dragend", handleDragEnd);
+      doneButton.removeEventListener("click", handleDone);
+      popup.remove();
+      marker.remove();
+    };
+    const handleDone = () => {
+      dispose();
+      options.onDone?.();
+    };
+
+    marker.on("drag", handleDrag);
+    marker.on("dragend", handleDragEnd);
+    doneButton.addEventListener("click", handleDone);
+    return dispose;
+  }
+
+  /**
    * Imperatively animate the camera, for the programmatic scripting API.
    *
    * Unlike {@link applyView} (which the store sync uses) this passes straight to

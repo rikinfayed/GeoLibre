@@ -48,10 +48,19 @@ const PHOTO_DROP_EXTENSIONS = new Set([
 /** Extensions the browser cannot decode on a canvas (thumbnail is skipped). */
 const HEIC_EXTENSIONS = new Set(["heic", "heif"]);
 
-/** Longest edge (px) of a generated thumbnail; keeps inline data URLs small. */
-const THUMBNAIL_MAX_DIMENSION = 256;
-/** JPEG quality for generated thumbnails. */
-const THUMBNAIL_QUALITY = 0.7;
+/**
+ * Longest edge (px) of the inline JPEG generated for each photo. The original
+ * file is not retained after import, so this is the only resolution available
+ * later: it is sized so the resizable photo popup stays sharp when enlarged
+ * (the popup display caps near 900px, doubled here for high-DPI screens) while
+ * keeping the inline data URL a few hundred KB rather than the multi-MB source.
+ * Budget ~250-500 KB per photo at this size/quality; since the data URL is held
+ * in the store and serialized into the project file, raising it further trades
+ * sharpness for project size on photo-heavy imports.
+ */
+const PHOTO_MAX_DIMENSION = 1600;
+/** JPEG quality for the generated photo image. */
+const PHOTO_JPEG_QUALITY = 0.82;
 
 function fileExtension(name: string): string {
   return name.split(".").pop()?.toLowerCase() ?? "";
@@ -202,10 +211,10 @@ async function readPhotoExif(file: Blob): Promise<PhotoExif | null> {
 }
 
 /**
- * Generate a small JPEG thumbnail (a data URL) for an image the browser can
- * decode. Returns null for HEIC/HEIF (no canvas decoder) and for any image the
- * browser fails to decode, so the caller still places the point without a
- * thumbnail.
+ * Generate a downscaled JPEG (a data URL) for an image the browser can decode,
+ * capped at {@link PHOTO_MAX_DIMENSION} on its longest edge. Returns null for
+ * HEIC/HEIF (no canvas decoder) and for any image the browser fails to decode,
+ * so the caller still places the point without an inline image.
  */
 async function createThumbnailDataUrl(
   file: Blob,
@@ -230,7 +239,7 @@ async function createThumbnailDataUrl(
   try {
     const scale = Math.min(
       1,
-      THUMBNAIL_MAX_DIMENSION / Math.max(bitmap.width, bitmap.height),
+      PHOTO_MAX_DIMENSION / Math.max(bitmap.width, bitmap.height),
     );
     const width = Math.max(1, Math.round(bitmap.width * scale));
     const height = Math.max(1, Math.round(bitmap.height * scale));
@@ -240,7 +249,7 @@ async function createThumbnailDataUrl(
     const context = canvas.getContext("2d");
     if (!context) return null;
     context.drawImage(bitmap, 0, 0, width, height);
-    return canvas.toDataURL("image/jpeg", THUMBNAIL_QUALITY);
+    return canvas.toDataURL("image/jpeg", PHOTO_JPEG_QUALITY);
   } catch {
     return null;
   } finally {
@@ -301,5 +310,75 @@ export async function loadGeotaggedPhotos(
     located: features.length,
     skipped: files.length - features.length,
     withoutThumbnail,
+  };
+}
+
+/**
+ * Build a point layer for photos that carry no usable GPS by placing every one
+ * at `center` (typically the current map view center). EXIF metadata and inline
+ * thumbnails are still read so a manually placed photo carries the same feature
+ * properties as a GPS-located one; the caller then lets the user drag the point
+ * into its final position.
+ *
+ * @param files - The image files to place. Anything the EXIF/thumbnail readers
+ *   cannot parse is still placed at the center with whatever could be read.
+ * @param center - The `[lng, lat]` to drop every photo at.
+ * @returns The point layer plus counts shaped like {@link loadGeotaggedPhotos}
+ *   (`skipped` is always 0 because manual placement never drops a photo).
+ */
+export async function loadPhotosAtLocation(
+  files: File[],
+  center: [number, number],
+): Promise<GeotaggedPhotoResult> {
+  const features: Feature<Point>[] = [];
+  let withoutThumbnail = 0;
+
+  for (const file of files) {
+    const fileName = file.name || "photo";
+    const exif = (await readPhotoExif(file)) ?? {};
+    const thumbnail = await createThumbnailDataUrl(file, fileName);
+    if (!thumbnail) withoutThumbnail += 1;
+
+    features.push({
+      type: "Feature",
+      geometry: {
+        type: "Point",
+        coordinates: [center[0], center[1]],
+      },
+      properties: buildPhotoProperties(fileName, exif, thumbnail),
+    });
+  }
+
+  return {
+    featureCollection: { type: "FeatureCollection", features },
+    total: files.length,
+    located: features.length,
+    skipped: 0,
+    withoutThumbnail,
+  };
+}
+
+/**
+ * Return a copy of a photo point collection with every feature moved to
+ * `[lng, lat]`. Used while the user drags the manual-placement handle so the
+ * rendered points follow the marker; feature properties (thumbnail, EXIF) are
+ * preserved. The per-feature spread is shallow, so the (potentially large)
+ * inline image string is shared by reference, not duplicated, on each drag
+ * frame.
+ *
+ * @param collection - The photo point collection to relocate.
+ * @param position - The `[lng, lat]` to move every feature to.
+ * @returns A new collection with the same features at the new position.
+ */
+export function relocatePhotoFeatures(
+  collection: FeatureCollection<Point>,
+  [lng, lat]: [number, number],
+): FeatureCollection<Point> {
+  return {
+    type: "FeatureCollection",
+    features: collection.features.map((feature) => ({
+      ...feature,
+      geometry: { type: "Point", coordinates: [lng, lat] },
+    })),
   };
 }
