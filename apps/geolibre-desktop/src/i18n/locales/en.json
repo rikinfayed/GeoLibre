@@ -1985,6 +1985,9 @@
       "showMarkers": "Show markers",
       "markerColor": "Marker color",
       "inset": "Inset minimap",
+      "hideChapterNav": "Hide chapter list",
+      "startView": "Enable start view",
+      "closingSlide": "Enable closing slide",
       "chapterTitle": "Chapter title",
       "description": "Description (HTML allowed)",
       "image": "Image URL",
@@ -2010,6 +2013,13 @@
       "bottomLeft": "Bottom left",
       "bottomRight": "Bottom right"
     },
+    "slide": {
+      "blank": "Empty screen",
+      "black": "Black screen",
+      "global": "Global view",
+      "startAdjacent": "Preview of first chapter",
+      "endAdjacent": "Hold on last chapter"
+    },
     "loadSample": "Load sample story",
     "htmlFile": "HTML",
     "handout": {
@@ -2025,8 +2035,14 @@
       "landscape": "Landscape",
       "documentTitle": "Document title",
       "documentTitlePlaceholder": "Title shown at the top of each page",
+      "subtitle": "Subtitle",
+      "subtitlePlaceholder": "Subtitle shown under the title on each page",
+      "byline": "Byline",
+      "bylinePlaceholder": "Author or credit line",
       "footerText": "Footer text",
       "footerPlaceholder": "Footer shown at the bottom of each page",
+      "startSlide": "Start slide",
+      "endSlide": "Closing slide",
       "generate": "Generate PDF",
       "stop": "Stop",
       "cancelled": "Export cancelled.",
